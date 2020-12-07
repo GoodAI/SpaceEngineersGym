@@ -1,0 +1,8 @@
+.idea/
+Pipfile
+build/
+dist/
+*.egg-info/**
+*.out
+*.pyc
+*.py
