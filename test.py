@@ -1,7 +1,7 @@
 import gym
 import gym_se
 
-env = gym.make('se-dummy-v0')
+env = gym.make('se-v0')
 env.reset()
 for _ in range(1000):
     env.render()
