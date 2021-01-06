@@ -2,9 +2,9 @@
 
 This repository contains an OpenAI Gym environment which makes it possible to control an agent in Space Engineers.
 
-## Installation (Windows)
+## Installation
 
-- Download Space Engineers from [Steam](https://store.steampowered.com/app/244850/Space_Engineers/)
+- Download Space Engineers from [Steam](https://store.steampowered.com/app/244850/Space_Engineers/) and istall the game (primarily for Windows)
 - Install [iv4xr-se-plugin](https://github.com/OndrejNepozitek/iv4xr-se-plugin) (follow the instructions in the plugin's repository)
 - Install this module with `pip3 install .` (use -e flag if you want editable/link installation)
 - Run the game at least once
