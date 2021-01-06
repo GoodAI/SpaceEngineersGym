@@ -1,7 +1,7 @@
 import gym
 import numpy as np
 from gym import spaces
-from gym_se.agent import AgentController, MoveArgs
+from gym_space_engineers.agent import AgentController, MoveArgs
 
 
 class SpaceEngineersEnv(gym.Env):
