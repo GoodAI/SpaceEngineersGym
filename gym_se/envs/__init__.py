@@ -1,2 +1,2 @@
-from gym_se.envs.se_env_dummy import SEDummyEnv
-from gym_se.envs.se_env import SEEnv
+from gym_se.envs.space_engineers_dummy import SpaceEngineersDummyEnv
+from gym_se.envs.space_engineers import SpaceEngineersEnv

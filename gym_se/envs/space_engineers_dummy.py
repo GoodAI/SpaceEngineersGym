@@ -1,16 +1,15 @@
 import gym
 import numpy as np
-from gym import error, spaces, utils
-from gym.utils import seeding
+from gym import spaces
 
 
-class SEDummyEnv(gym.Env):
-    metadata = {'render.modes': ['human']}
+class SpaceEngineersDummyEnv(gym.Env):
 
     def __init__(self):
         self.bounds = 1000.
         self.position = np.array([0, 0])
-        self.observation_space = spaces.Box(low=np.array([-self.bounds, -self.bounds]), high=np.array([self.bounds, self.bounds]), dtype=np.float32)
+        self.observation_space = spaces.Box(low=np.array([-self.bounds, -self.bounds]),
+                                            high=np.array([self.bounds, self.bounds]), dtype=np.float32)
         self.action_space = spaces.Box(low=np.array([-1., -1.]), high=np.array([1., 1.]), dtype=np.float32)
 
     def step(self, action):
