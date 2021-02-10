@@ -34,7 +34,7 @@ env.close()
 Follows the description of the environment:
 
 **STATE:**
-The state consists of 16 rays that are cast from the player position the observe where are obstacles.
+The state consists of 16 rays that are cast from the player position to observe where are obstacles.
 The rays are cast in uniform intervals - the difference between two consecutive rays is always 22.5 degrees.
 The result of each ray cast is a number in the [0,1] interval.
     - Value of 0 means that there was an obstacle right in front of the agent.
