@@ -1,15 +1,8 @@
-import os
-
 import gym
 import numpy as np
 from gym import spaces
-from gym_space_engineers.agent import AgentController, MoveArgs
-import random
 import zmq
-import time
 import json
-from scoop import futures
-import signal
 
 context = zmq.Context()
 socket = context.socket(zmq.REQ)
