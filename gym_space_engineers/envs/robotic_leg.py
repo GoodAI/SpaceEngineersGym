@@ -15,8 +15,6 @@ socket.connect("tcp://localhost:5556")
 
 class RoboticLegEnv(gym.Env):
     def __init__(self):
-        self.agent = AgentController()
-
         self.rotorsCount = 3
         self.observation_bounds = 10
         self.observation_space = spaces.Box(
