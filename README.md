@@ -5,7 +5,7 @@ This repository contains an OpenAI Gym environment which makes it possible to co
 ## Installation
 
 - Download Space Engineers from [Steam](https://store.steampowered.com/app/244850/Space_Engineers/) and istall the game (primarily for Windows)
-- Install [iv4xr-se-plugin](https://github.com/OndrejNepozitek/iv4xr-se-plugin) (follow the instructions in the plugin's repository)
+- Install [iv4xr-se-plugin](https://github.com/GoodAI/iv4xr-se-plugin) (follow the instructions in the plugin's repository)
 - Install this module with `pip3 install .` (use -e flag if you want editable/link installation)
 - Run the game at least once
 - Download the [MazeWorld](https://drive.google.com/file/d/1He_0VkAvJpaqVyoYlTZZEn0TytRpU8mm/view?usp=sharing) archive
@@ -34,7 +34,7 @@ env.close()
 Follows the description of the environment:
 
 **STATE:**
-The state consists of 16 rays that are cast from the player position the observe where are obstacles.
+The state consists of 16 rays that are cast from the player position to observe where are obstacles.
 The rays are cast in uniform intervals - the difference between two consecutive rays is always 22.5 degrees.
 The result of each ray cast is a number in the [0,1] interval.
     - Value of 0 means that there was an obstacle right in front of the agent.
