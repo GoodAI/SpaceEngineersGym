@@ -103,7 +103,6 @@ class WalkingRobotIKEnv(gym.Env):
             self._send_request(request)
 
 
-# Test the environment by doing 1000 random steps in the game
 if __name__ == "__main__":
     import gym
     import time
