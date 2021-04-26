@@ -5,7 +5,7 @@ This repository contains an OpenAI Gym environment which makes it possible to co
 ## Installation
 
 - Download Space Engineers from [Steam](https://store.steampowered.com/app/244850/Space_Engineers/) and istall the game (primarily for Windows)
-- Install [iv4xr-se-plugin](https://github.com/GoodAI/iv4xr-se-plugin) (follow the instructions in the plugin's repository)
+- Install [iv4xr-se-plugin](https://github.com/GoodAI/iv4xr-se-plugin-fork) (follow the instructions in the plugin's repository)
 - Install this module with `pip3 install .` (use -e flag if you want editable/link installation)
 - Run the game at least once
 - Download the [MazeWorld](https://drive.google.com/file/d/1He_0VkAvJpaqVyoYlTZZEn0TytRpU8mm/view?usp=sharing) archive
