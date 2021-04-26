@@ -157,6 +157,7 @@ class WalkingRobotIKEnv(gym.Env):
         position = self._get_np_array_from_vector(response["position"])
         up = self._get_np_array_from_vector(response["up"])
         forward = self._get_np_array_from_vector(response["forward"])
+        end_effector_positions = np.stack(self._get_array_from_vector(pos) for pos in response["endEffectorPositions"])
 
         # TODO(toni): extract orientation from response
 
@@ -200,7 +201,7 @@ class WalkingRobotIKEnv(gym.Env):
         return observation
 
     @staticmethod
-    def _get_np_array_from_vector(vector):
+    def _get_array_from_vector(vector):
         return np.array([vector["x"], vector["y"], vector["z"]])
 
     @staticmethod
@@ -360,6 +361,9 @@ if __name__ == "__main__":
     import time
 
     import gym
+
+    # noinspection PyUnresolvedReferences
+    import gym_space_engineers
 
     for _ in range(1):
         env = gym.make('SpaceEngineers-WalkingRobot-IK-v0', detach=False)
