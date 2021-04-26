@@ -47,13 +47,16 @@ class WalkingRobotIKEnv(gym.Env):
         }
 
         response = self._send_request(request)
-        position = self._get_np_array_from_vector(response["position"])
-        up = self._get_np_array_from_vector(response["up"])
-        forward = self._get_np_array_from_vector(response["forward"])
+
+        position = self._get_array_from_vector(response["position"])
+        up = self._get_array_from_vector(response["up"])
+        forward = self._get_array_from_vector(response["forward"])
+        end_effector_positions = np.stack(self._get_array_from_vector(pos) for pos in response["endEffectorPositions"])
 
         info = {
             "up": up,
             "forward": forward,
+            "end_effector_positions": end_effector_positions,
         }
 
         return position, 0, False, info
@@ -65,7 +68,7 @@ class WalkingRobotIKEnv(gym.Env):
             raise NotImplementedError()
 
     @staticmethod
-    def _get_np_array_from_vector(vector):
+    def _get_array_from_vector(vector):
         return np.array([vector["x"], vector["y"], vector["z"]])
 
     @staticmethod
@@ -99,6 +102,8 @@ class WalkingRobotIKEnv(gym.Env):
 if __name__ == "__main__":
     import gym
     import time
+    # noinspection PyUnresolvedReferences
+    import gym_space_engineers
 
     for _ in range(1):
         env = gym.make('SpaceEngineers-WalkingRobot-IK-v0', detach=False)
