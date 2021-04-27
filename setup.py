@@ -6,7 +6,9 @@ setup(
     install_requires=["gym", "numpy", "pyzmq"],
     extras_require={
         "tests": [
+            # Test and env checker
             "pytest",
+            "stable-baselines3",
             # Type check
             "pytype",
             # Lint code

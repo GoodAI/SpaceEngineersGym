@@ -13,8 +13,10 @@ class FakeServer(object):
         super(FakeServer, self).__init__()
         self.stop_thread = False
         self.thread = Thread(target=self.run, daemon=True)
-        self.thread.start()
         self.n_legs = 6
+
+    def start(self):
+        self.thread.start()
 
     def run(self):
         context = zmq.Context()
@@ -52,14 +54,16 @@ class FakeServer(object):
 
 def test_gym_env():
     server = FakeServer()
-    env = gym.make("SpaceEngineers-WalkingRobot-IK-v0", detach=True)
+    server.start()
+    env = gym.make("SpaceEngineers-WalkingRobot-IK-v0", detach=True, verbose=2)
 
-    # import ipdb; ipdb.set_trace()
     check_env(env, warn=True)
 
-    # obs = env.reset()
-    #
-    # for _ in range(5):
-    #     obs, reward, done, info = env.step(env.action_space.sample())
+    env.reset()
+    for _ in range(10):
+        _, _, done, _ = env.step(env.action_space.sample())
+
+        if done:
+            env.reset()
 
     env.close()
