@@ -1,5 +1,6 @@
 import json
 import math
+import time
 from typing import Any, Dict, Tuple
 
 import gym
@@ -25,6 +26,7 @@ class WalkingRobotIKEnv(gym.Env):
     :param weight_distance_traveled: weight for the distance travelled in x axis
     :param weight_heading_deviation: weight for not walking with the right heading
     :param weight_angular_velocity: weight for any angular velocity
+    :param control_frequency: limit control frequency (in Hz)
     :param verbose: control verbosity of the output (useful for debug)
     """
 
@@ -36,10 +38,20 @@ class WalkingRobotIKEnv(gym.Env):
         weight_distance_traveled: float = 50,
         weight_heading_deviation: float = 1,
         weight_angular_velocity: float = 1.0,
+        control_frequency: float = 20.0,
         verbose: int = 1,
     ):
         self.detach = detach
         self.id = None
+
+        # Target control frequency in Hz
+        self.control_frequency = control_frequency
+        self.wanted_dt = 1.0 / self.control_frequency
+        self.current_sleep_time = self.wanted_dt
+        # To avoid unbounded error:
+        self.max_dt = 2.0  # in s
+        self.last_time = time.time()
+        self._first_step = True
 
         # For now, this is hardcoded for the 6-legged robot
         self.number_of_legs = 6
@@ -56,7 +68,6 @@ class WalkingRobotIKEnv(gym.Env):
         self.input_dimension = self.number_of_legs * self.num_dim_per_leg * num_var_per_joint + dim_additional
 
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.input_dimension,))
-
 
         # For now, we expect that the legs can move 10 meters in each direction
         # We use this value to map the [-1,1] interval to the actual reachable space
@@ -168,6 +179,11 @@ class WalkingRobotIKEnv(gym.Env):
         return observation, reward, done, info
 
     def reset(self) -> np.ndarray:
+        # Reset values for controlling frequency
+        self._first_step = True
+        self.current_sleep_time = self.wanted_dt
+        self.last_time = time.time()
+
         if self.id is None:
             response = self._send_initial_request()
         else:
@@ -198,8 +214,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         self.robot_position = Point3D(position)
         self._update_world_position()
-
-        # dt = self.update_control_frequency(command)
+        self._update_control_frequency()
 
         observation = self._extract_observation(response)
 
@@ -220,6 +235,9 @@ class WalkingRobotIKEnv(gym.Env):
                 # TODO(toni): check normalization
                 end_effector_positions / self.max_action,
                 self.current_rot,
+                # TODO(toni): add center deviation?
+                # TODO(toni): as we don't have velocity yet
+                # add delta in position
                 # joint_torque,
                 # joint_positions,
                 # joint_velocities,
@@ -230,6 +248,38 @@ class WalkingRobotIKEnv(gym.Env):
             )
         )
         return observation
+
+    def _update_control_frequency(self, reset: bool = False) -> float:
+        # Limit controller frequency
+        # Update control frequency estimate
+        # clip to account for crashes
+        dt = np.clip(time.time() - self.last_time, 0.0, self.max_dt)
+        self.last_time = time.time()
+
+        if not self._first_step:
+            # compute error in control frequency
+            # positive: the control loop is too fast: need to sleep a bit
+            # negative: the control loop is too slow: do not sleep
+            control_dt_error = self.wanted_dt - dt
+            # clip the error
+            control_dt_error = np.clip(control_dt_error, -0.5 * self.wanted_dt, 0.5 * self.wanted_dt)
+
+            corrected_sleep_time = self.current_sleep_time + control_dt_error
+
+            # gradually_update
+            alpha_sleep = 0.1
+            self.current_sleep_time = corrected_sleep_time * alpha_sleep + (1 - alpha_sleep) * self.current_sleep_time
+
+            # Clip again
+            self.current_sleep_time = np.clip(self.current_sleep_time, 0.0, self.wanted_dt)
+        else:
+            # First step: the dt would be zero
+            self._first_step = True
+
+        if self.verbose > 1:
+            print(f"{1 / dt:.2f}Hz")
+        time.sleep(self.current_sleep_time)
+        return dt
 
     @staticmethod
     def to_array(vector: Dict[str, np.ndarray]) -> np.ndarray:
@@ -396,8 +446,6 @@ class WalkingRobotIKEnv(gym.Env):
 
 
 if __name__ == "__main__":
-    import time
-
     import gym
 
     # noinspection PyUnresolvedReferences
