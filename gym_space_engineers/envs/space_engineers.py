@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 from gym import spaces
+
 from gym_space_engineers.agent import AgentController, MoveArgs
 
 
@@ -27,7 +28,6 @@ class SpaceEngineersEnv(gym.Env):
     **NOTE:**
     In order for this environment to work, the agent must be located in the maze world.
     """
-
 
     def __init__(self):
         self.agent = AgentController()

@@ -155,18 +155,18 @@ class WalkingRobotIKEnv(gym.Env):
         # Receive and extract response from server
         response = self._send_request(request)
         position = self._get_np_array_from_vector(response["position"])
-        up = self._get_np_array_from_vector(response["up"])
+        right = self._get_np_array_from_vector(response["right"])
         forward = self._get_np_array_from_vector(response["forward"])
+        up = self._get_np_array_from_vector(response["up"])
         end_effector_positions = np.stack(self._get_array_from_vector(pos) for pos in response["endEffectorPositions"])
 
-        # TODO(toni): extract orientation from response
-
-        self.robot_position = Point3D(position)
-        # self.current_rot = np.array(response["rotation_3d"])
-        # TODO(toni): compute rotation (Euler angles)
-        self.current_rot = np.zeros((3,))
+        # TODO(toni): find right convention
+        rot_mat = R.from_matrix([right, forward, up])
+        self.current_rot = rot_mat.as_euler("xyz", degrees=False)
         self.heading = normalize_angle(self.current_rot[2])  # extract yaw
         # self.ang_vel = np.array(response["ang_vel"])
+
+        self.robot_position = Point3D(position)
 
         self._update_world_position()
 
@@ -201,7 +201,7 @@ class WalkingRobotIKEnv(gym.Env):
         return observation
 
     @staticmethod
-    def _get_array_from_vector(vector):
+    def _get_array_from_vector(vector: Dict[str, np.ndarray]) -> np.ndarray:
         return np.array([vector["x"], vector["y"], vector["z"]])
 
     @staticmethod
@@ -287,8 +287,9 @@ class WalkingRobotIKEnv(gym.Env):
         continuity_cost = 0.0
         heading_cost, is_headed = self._heading_cost()
         heading_cost *= self.weight_heading_deviation
+        # TODO(toni): check convention
         # use delta in x direction as distance that was travelled
-        distance_reward = self.delta_world_position.x * self.weight_distance_traveled
+        distance_reward = self.delta_world_position.z * self.weight_distance_traveled
 
         if self.verbose > 1:
             # f"Continuity Cost: {continuity_cost:5f}
@@ -314,7 +315,7 @@ class WalkingRobotIKEnv(gym.Env):
         :return: normalized squared value for deviation from a straight line
         """
         # TODO(toni): adapt to correct direction
-        deviation = self.world_position.y
+        deviation = self.world_position.x
         deviation = deviation / self.threshold_center_deviation
         return deviation ** 2
 
@@ -334,6 +335,7 @@ class WalkingRobotIKEnv(gym.Env):
         """
         :return: True if the robot has fallen (roll or pitch above threshold)
         """
+        # TODO(toni): check the indices
         return bool(
             math.fabs(self.current_rot[0]) > self.roll_over_limit or math.fabs(self.current_rot[1]) > self.roll_over_limit
         )
@@ -342,14 +344,17 @@ class WalkingRobotIKEnv(gym.Env):
         """
         :return True if the robot is too low
         """
-        return bool(self.robot_position.z < self.crawling_height_limit)
+        # TODO(toni): check convention
+        # NOTE: probably world_position is fine here
+        return bool(self.robot_position.y < self.crawling_height_limit)
 
     def is_terminal_state(self) -> bool:
         """
         :return: True if the robot is in a terminal state (episode should end)
         """
         has_fallen = self.has_fallen()
-        is_centered = math.fabs(self.world_position.y) < self.threshold_center_deviation
+        # TODO(toni): check convention
+        is_centered = math.fabs(self.world_position.x) < self.threshold_center_deviation
         # Deactivate crawling detection for sim
         # is_crawling = self.is_crawling()
         is_crawling = False
@@ -363,7 +368,7 @@ if __name__ == "__main__":
     import gym
 
     # noinspection PyUnresolvedReferences
-    import gym_space_engineers
+    import gym_space_engineers  # noqa: F401
 
     for _ in range(1):
         env = gym.make('SpaceEngineers-WalkingRobot-IK-v0', detach=False)
