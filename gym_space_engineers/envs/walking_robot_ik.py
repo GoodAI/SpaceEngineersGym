@@ -25,7 +25,6 @@ class WalkingRobotIKEnv(gym.Env):
     :param weight_center_deviation: weight for the off center derivation in y axis
     :param weight_distance_traveled: weight for the distance travelled in x axis
     :param weight_heading_deviation: weight for not walking with the right heading
-    :param weight_angular_velocity: weight for any angular velocity
     :param control_frequency: limit control frequency (in Hz)
     :param verbose: control verbosity of the output (useful for debug)
     """
@@ -37,7 +36,6 @@ class WalkingRobotIKEnv(gym.Env):
         weight_center_deviation: float = 1,
         weight_distance_traveled: float = 50,
         weight_heading_deviation: float = 1,
-        weight_angular_velocity: float = 1.0,
         control_frequency: float = 20.0,
         verbose: int = 1,
     ):
@@ -61,9 +59,8 @@ class WalkingRobotIKEnv(gym.Env):
         num_var_per_joint = 0  # position,velocity,torque?
         dim_current_rotation = 3
         dim_heading = 1  # deviation to desired heading
-        # 4 legs with 3 joints and each has position, velocity, torque and pose
-        # + current rotation + heading
-        dim_additional = dim_current_rotation + dim_heading
+        dim_end_effector = self.number_of_legs * 3
+        dim_additional = dim_current_rotation + dim_heading + dim_end_effector
 
         self.input_dimension = self.number_of_legs * self.num_dim_per_leg * num_var_per_joint + dim_additional
 
@@ -97,7 +94,6 @@ class WalkingRobotIKEnv(gym.Env):
         self.weight_center_deviation = weight_center_deviation
         self.weight_distance_traveled = weight_distance_traveled
         self.weight_heading_deviation = weight_heading_deviation
-        self.weight_angular_velocity = weight_angular_velocity
         self.threshold_center_deviation = threshold_center_deviation
 
         # Early termination condition and costs
@@ -167,7 +163,7 @@ class WalkingRobotIKEnv(gym.Env):
         # (for instance n steps at targets, that should be decoupled from compute reward)
         self._on_step()
         done = self.is_terminal_state()
-        reward = self.compute_reward(scaled_action, done)
+        reward = self._compute_reward(scaled_action, done)
 
         info = {
             # "up": up,
@@ -226,14 +222,14 @@ class WalkingRobotIKEnv(gym.Env):
         # joint_positions = np.array(response["joint_positions"])
         # joint_velocities = np.array(response["joint_velocities"])
         # TODO(toni): add velocity
-        end_effector_positions = np.stack(self.to_array(pos) for pos in response["endEffectorPositions"])
+        end_effector_positions = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
 
         heading_deviation = normalize_angle(self.heading - self.start_heading)
 
         observation = np.concatenate(
             (
                 # TODO(toni): check normalization
-                end_effector_positions / self.max_action,
+                end_effector_positions.flatten() / self.max_action,
                 self.current_rot,
                 # TODO(toni): add center deviation?
                 # TODO(toni): as we don't have velocity yet
@@ -363,7 +359,6 @@ class WalkingRobotIKEnv(gym.Env):
     def _compute_reward(self, scaled_action: np.ndarray, done: bool) -> float:
 
         deviation_cost = self.weight_center_deviation * self._center_deviation_cost()
-        angular_velocity_cost = self.weight_angular_velocity * self._angular_velocity_cost()
 
         # continuity_cost = self.weight_continuity * self._continuity_cost(scaled_action)
         # Note: we are not using continuity cost for now, as energy efficiency is not needed in simulation
@@ -385,7 +380,7 @@ class WalkingRobotIKEnv(gym.Env):
         if done:
             distance_reward = 0.0
 
-        reward = -(deviation_cost + heading_cost + continuity_cost + angular_velocity_cost) + distance_reward
+        reward = -(deviation_cost + heading_cost + continuity_cost) + distance_reward
         if done:
             # give negative reward
             reward -= self.early_termination_penalty

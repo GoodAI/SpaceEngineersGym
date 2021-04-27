@@ -1,4 +1,7 @@
-LINT_PATHS=gym_space_engineers/ setup.py
+LINT_PATHS=gym_space_engineers/ setup.py tests
+
+pytest:
+	python3 -m pytest -v
 
 type:
 	pytype -j auto

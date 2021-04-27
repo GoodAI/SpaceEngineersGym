@@ -6,6 +6,7 @@ setup(
     install_requires=["gym", "numpy", "pyzmq"],
     extras_require={
         "tests": [
+            "pytest",
             # Type check
             "pytype",
             # Lint code
