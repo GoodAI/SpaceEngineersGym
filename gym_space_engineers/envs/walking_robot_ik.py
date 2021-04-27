@@ -160,14 +160,13 @@ class WalkingRobotIKEnv(gym.Env):
         self._reset_transform()
         return self._get_observation(response)
 
-
     def _get_observation(self, response):
         # Extract response from server
         position = self._get_np_array_from_vector(response["position"])
         right = self._get_np_array_from_vector(response["right"])
         forward = self._get_np_array_from_vector(response["forward"])
         up = self._get_np_array_from_vector(response["up"])
-        end_effector_positions = np.stack(self._get_array_from_vector(pos) for pos in response["endEffectorPositions"])
+        # end_effector_positions = np.stack(self._get_array_from_vector(pos) for pos in response["endEffectorPositions"])
 
         # TODO(toni): find right convention
         rot_mat = R.from_matrix([right, forward, up])
@@ -181,13 +180,11 @@ class WalkingRobotIKEnv(gym.Env):
 
         # dt = self.update_control_frequency(command)
 
-        observation = self.extract_observation(response)
+        observation = self._extract_observation(response)
 
-        # Save last observation in case no manual reset is needed
-        self.last_obs = observation.copy()
         return observation
 
-    def extract_observation(self, response):
+    def _extract_observation(self, response):
         # lin_acc = np.array(response["lin_acc"])
         # joint_torque = np.array(response["joint_torque"])
         # joint_positions = np.array(response["joint_positions"])
