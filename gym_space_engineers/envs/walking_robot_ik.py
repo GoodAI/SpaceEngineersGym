@@ -45,21 +45,26 @@ class WalkingRobotIKEnv(gym.Env):
         # For now, this is hardcoded for the 6-legged robot
         self.number_of_legs = 6
         self.num_dim_per_leg = 4
-        self.max_action = 1
-        # TODO(toni): update lower and upper limits
+        # For now, we expect that the legs can move 10 meters in each direction
+        # We use this value to map the [-1,1] interval to the actual reachable space
+        self.max_action = 10
+        self.min_speed = 0
+        self.max_speed = 100
+
         self.action_upper_limits = np.ones(self.number_of_legs * self.num_dim_per_leg) * self.max_action
         self.action_lower_limits = np.ones(self.number_of_legs * self.num_dim_per_leg) * -self.max_action
 
-        # For now, we expect that the legs can move 10 meters in each direction
-        # We use this value to map the [-1,1] interval to the actual reachable space
-        self.action_space_size = 10
+        # Update limits for speed input
+        self.action_upper_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.max_speed
+        self.action_lower_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.min_speed
 
         # [X, Y, Z, Speed] for each of the 6 legs
         # (X, Y, Z) is a position relative to the shoulder joint of each leg
         # This position will be given to the inverse kinematics model
         self.action_space = spaces.Box(
-            low=np.stack([[-1, -1, -1, -1] for _ in range(self.number_of_legs)]).flatten(),
-            high=np.stack([[1, 1, 1, 1] for _ in range(self.number_of_legs)]).flatten(),
+            low=-1.0,
+            high=1.0,
+            shape=self.action_upper_limits.shape,
             dtype=np.float32,
         )
 
@@ -89,8 +94,7 @@ class WalkingRobotIKEnv(gym.Env):
         self.heading = 0  # heading in radians
         self.start_heading = 0
         self.current_rot = np.zeros(3)
-        # self.imu_orientation = np.zeros(3)
-        # self.start_imu_orientation = np.zeros(3)
+
         self.world_position = np.zeros(3)  # x,y,z world position
         self.robot_position = Point3D(np.zeros(3))  # x,y,z tracking position (without transform)
         self.old_world_position = Point3D(np.zeros(3))
@@ -100,26 +104,29 @@ class WalkingRobotIKEnv(gym.Env):
         # Angular velocity
         self.ang_vel = np.zeros(3)
 
-    def step(self, action):
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
         if self.id is None:
             raise Exception("Please call reset() before step()")
 
-        scaled_action = action
+        # The agent outputs a scaled action in [-1, 1]
+        scaled_action = action.copy()
         # Unscale to real action
         action = self.unscale_action(action)
 
         commands = {}
         leg_ids = ["l1", "l2", "l3", "r1", "r2", "r3"]
 
-        for i, leg_id in zip(range(self.number_of_legs), leg_ids):
-            values = [(action[4 * i + j].item()) for j in range(4)]
+        for i, leg_id in enumerate(leg_ids):
+            # Extract action values for each leg
+            start_idx = self.num_dim_per_leg * i
+            values = action[start_idx : start_idx + self.num_dim_per_leg]
             commands[leg_id] = {
                 "position": {
-                    "x": values[0] * self.action_space_size,
-                    "y": values[1] * self.action_space_size,
-                    "z": values[2] * self.action_space_size,
+                    "x": values[0],
+                    "y": values[1],
+                    "z": values[2],
                 },
-                "speed": (values[3] + 1) * 50,
+                "speed": values[3],
             }
 
         request = {
@@ -146,7 +153,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         return observation, reward, done, info
 
-    def reset(self):
+    def reset(self) -> np.ndarray:
         if self.id is None:
             response = self._send_initial_request()
         else:
@@ -160,13 +167,13 @@ class WalkingRobotIKEnv(gym.Env):
         self._reset_transform()
         return self._get_observation(response)
 
-    def _get_observation(self, response):
+    def _get_observation(self, response: Dict[str, Any]) -> np.ndarray:
         # Extract response from server
-        position = self._get_np_array_from_vector(response["position"])
-        right = self._get_np_array_from_vector(response["right"])
-        forward = self._get_np_array_from_vector(response["forward"])
-        up = self._get_np_array_from_vector(response["up"])
-        # end_effector_positions = np.stack(self._get_array_from_vector(pos) for pos in response["endEffectorPositions"])
+        position = self.to_array(response["position"])
+        right = self.to_array(response["right"])
+        forward = self.to_array(response["forward"])
+        up = self.to_array(response["up"])
+        # end_effector_positions = np.stack(self.to_array(pos) for pos in response["endEffectorPositions"])
 
         # TODO(toni): find right convention
         rot_mat = R.from_matrix([right, forward, up])
@@ -175,7 +182,6 @@ class WalkingRobotIKEnv(gym.Env):
         # self.ang_vel = np.array(response["ang_vel"])
 
         self.robot_position = Point3D(position)
-
         self._update_world_position()
 
         # dt = self.update_control_frequency(command)
@@ -184,7 +190,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         return observation
 
-    def _extract_observation(self, response):
+    def _extract_observation(self, response: Dict[str, Any]) -> np.ndarray:
         # lin_acc = np.array(response["lin_acc"])
         # joint_torque = np.array(response["joint_torque"])
         # joint_positions = np.array(response["joint_positions"])
@@ -207,18 +213,18 @@ class WalkingRobotIKEnv(gym.Env):
         return observation
 
     @staticmethod
-    def _get_array_from_vector(vector: Dict[str, np.ndarray]) -> np.ndarray:
+    def to_array(vector: Dict[str, np.ndarray]) -> np.ndarray:
         return np.array([vector["x"], vector["y"], vector["z"]])
 
     @staticmethod
-    def _send_request(request):
+    def _send_request(request: Dict[str, Any]) -> Dict[str, Any]:
         request_message = json.dumps(request)
         socket.send(request_message.encode("UTF-8"))
         response = json.loads(socket.recv())
 
         return response
 
-    def _send_initial_request(self):
+    def _send_initial_request(self) -> Dict[str, Any]:
         request = {
             "type": "Initial",
             "detach": self.detach,
