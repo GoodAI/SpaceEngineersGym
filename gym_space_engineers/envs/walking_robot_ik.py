@@ -40,11 +40,24 @@ class WalkingRobotIKEnv(gym.Env):
     ):
         self.detach = detach
         self.id = None
-        self.observation_space = None
 
         # For now, this is hardcoded for the 6-legged robot
         self.number_of_legs = 6
         self.num_dim_per_leg = 4
+
+        # Observation space dim
+        num_var_per_joint = 0  # position,velocity,torque?
+        dim_current_rotation = 3
+        dim_heading = 1  # deviation to desired heading
+        # 4 legs with 3 joints and each has position, velocity, torque and pose
+        # + current rotation + heading
+        dim_additional = dim_current_rotation + dim_heading
+
+        self.input_dimension = self.number_of_legs * self.num_dim_per_leg * num_var_per_joint + dim_additional
+
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.input_dimension,))
+
+
         # For now, we expect that the legs can move 10 meters in each direction
         # We use this value to map the [-1,1] interval to the actual reachable space
         self.max_action = 10
@@ -88,6 +101,7 @@ class WalkingRobotIKEnv(gym.Env):
         # Height limit to assume that the robot is crawling
         # self.crawling_height_limit = 0.08
 
+        # Control verbosity of the output
         self.verbose = verbose
 
         # holds all the necessary information
@@ -95,7 +109,7 @@ class WalkingRobotIKEnv(gym.Env):
         self.start_heading = 0
         self.current_rot = np.zeros(3)
 
-        self.world_position = np.zeros(3)  # x,y,z world position
+        self.world_position = np.zeros(3)  # x,y,z world position (centered at zero at reset)
         self.robot_position = Point3D(np.zeros(3))  # x,y,z tracking position (without transform)
         self.old_world_position = Point3D(np.zeros(3))
         self.delta_world_position = Point3D(np.zeros(3))  # x,y,z world position change from last position
@@ -162,7 +176,9 @@ class WalkingRobotIKEnv(gym.Env):
                 "type": "Reset",
             }
             response = self._send_request(request)
-        # TODO: return initial observation
+
+        # TODO(toni): check what is the reset position
+        # otherwise we need to use robot and world position
         self.old_world_position = Point3D(np.zeros(3))
         self._reset_transform()
         return self._get_observation(response)
@@ -173,7 +189,6 @@ class WalkingRobotIKEnv(gym.Env):
         right = self.to_array(response["right"])
         forward = self.to_array(response["forward"])
         up = self.to_array(response["up"])
-        # end_effector_positions = np.stack(self.to_array(pos) for pos in response["endEffectorPositions"])
 
         # TODO(toni): find right convention
         rot_mat = R.from_matrix([right, forward, up])
@@ -195,11 +210,15 @@ class WalkingRobotIKEnv(gym.Env):
         # joint_torque = np.array(response["joint_torque"])
         # joint_positions = np.array(response["joint_positions"])
         # joint_velocities = np.array(response["joint_velocities"])
+        # TODO(toni): add velocity
+        end_effector_positions = np.stack(self.to_array(pos) for pos in response["endEffectorPositions"])
 
         heading_deviation = normalize_angle(self.heading - self.start_heading)
 
         observation = np.concatenate(
             (
+                # TODO(toni): check normalization
+                end_effector_positions / self.max_action,
                 self.current_rot,
                 # joint_torque,
                 # joint_positions,
