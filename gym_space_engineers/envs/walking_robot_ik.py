@@ -160,7 +160,6 @@ class WalkingRobotIKEnv(gym.Env):
 
         response = self._send_request(request)
         observation = self._get_observation(response)
-
         # Update internal state if needed
         # (for instance n steps at targets, that should be decoupled from compute reward)
         self._on_step()
@@ -209,8 +208,8 @@ class WalkingRobotIKEnv(gym.Env):
         rot_mat = R.from_matrix(np.array([right, forward, up]).T)
         self.current_rotation_matrix = rot_mat.as_matrix()
         self.current_rot = rot_mat.as_euler("xyz", degrees=False)
-        # Forward direction is at +90deg (compared to the "right" vector)
-        self.heading = normalize_angle(self.current_rot[2] + np.pi / 2)  # extract yaw
+        # TODO(toni): check
+        self.heading = normalize_angle(self.current_rot[2])  # extract yaw
         # self.ang_vel = np.array(response["ang_vel"])
         self.robot_position = Point3D(position)
 
