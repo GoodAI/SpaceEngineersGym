@@ -14,6 +14,7 @@ class FakeServer(object):
         self.stop_thread = False
         self.thread = Thread(target=self.run, daemon=True)
         self.n_legs = 6
+        self.step = 0
 
     def start(self):
         self.thread.start()
@@ -27,22 +28,34 @@ class FakeServer(object):
             #  Wait for next request from client
             request = json.loads(socket.recv())
             # print(f"Received request: {request}")
+            self.step += 1
 
             # Default response
+            # Rotated 180deg
             response = dict(
-                position=dict(x=0, y=0, z=0),
+                position=dict(x=1, y=1, z=-self.step),
                 right=dict(x=1, y=0, z=0),
-                forward=dict(x=0, y=1, z=0),
-                up=dict(x=0, y=0, z=1),
+                forward=dict(x=0, y=0, z=-1),
+                up=dict(x=0, y=1, z=0),
                 endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
             )
+            # Aligned with z axis
+            # response = dict(
+            #     position=dict(x=1, y=1, z=self.step),
+            #     right=dict(x=-1, y=0, z=0),
+            #     forward=dict(x=0, y=0, z=1),
+            #     up=dict(x=0, y=1, z=0),
+            #     endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
+            # )
 
             if request["type"] == "Initial":
                 response["id"] = 1
             elif request["type"] == "Stop":
                 self.stop_thread = True
-            elif request["type"] in ["Reset", "Command"]:
+            elif request["type"] == "Command":
                 pass
+            elif request["type"] == "Reset":
+                self.step = 0
             else:
                 raise NotImplementedError()
 

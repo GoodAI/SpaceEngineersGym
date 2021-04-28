@@ -26,6 +26,7 @@ class WalkingRobotIKEnv(gym.Env):
     :param weight_distance_traveled: weight for the distance travelled in x axis
     :param weight_heading_deviation: weight for not walking with the right heading
     :param control_frequency: limit control frequency (in Hz)
+    :param max_action: limit the legs to move ``max_action`` meters in each direction
     :param verbose: control verbosity of the output (useful for debug)
     """
 
@@ -37,6 +38,7 @@ class WalkingRobotIKEnv(gym.Env):
         weight_distance_traveled: float = 50,
         weight_heading_deviation: float = 1,
         control_frequency: float = 20.0,
+        max_action: float = 10.0,
         verbose: int = 1,
     ):
         self.detach = detach
@@ -68,7 +70,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         # For now, we expect that the legs can move 10 meters in each direction
         # We use this value to map the [-1,1] interval to the actual reachable space
-        self.max_action = 10
+        self.max_action = max_action
         self.min_speed = 0
         self.max_speed = 100
 
@@ -189,26 +191,32 @@ class WalkingRobotIKEnv(gym.Env):
             }
             response = self._send_request(request)
 
+        # IMPORTANT: update robot pose before reseting the transform
+        self._update_robot_pose(response)
         # TODO(toni): check what is the reset position
         # otherwise we need to use robot and world position
         self.old_world_position = Point3D(np.zeros(3))
         self._reset_transform()
+
         return self._get_observation(response)
 
-    def _get_observation(self, response: Dict[str, Any]) -> np.ndarray:
-        # Extract response from server
+    def _update_robot_pose(self, response: Dict[str, Any]) -> None:
         position = self.to_array(response["position"])
         right = self.to_array(response["right"])
         forward = self.to_array(response["forward"])
         up = self.to_array(response["up"])
 
         # TODO(toni): find right convention
-        rot_mat = R.from_matrix([right, forward, up])
+        rot_mat = R.from_matrix(np.array([right, forward, up]).T)
         self.current_rot = rot_mat.as_euler("xyz", degrees=False)
-        self.heading = normalize_angle(self.current_rot[2])  # extract yaw
+        # Forward direction is at +90deg (compared to the "right" vector)
+        self.heading = normalize_angle(self.current_rot[2] + np.pi / 2)  # extract yaw
         # self.ang_vel = np.array(response["ang_vel"])
-
         self.robot_position = Point3D(position)
+
+    def _get_observation(self, response: Dict[str, Any]) -> np.ndarray:
+        # Extract response from server
+        self._update_robot_pose(response)
         self._update_world_position()
         self._update_control_frequency()
 
@@ -279,7 +287,9 @@ class WalkingRobotIKEnv(gym.Env):
 
     @staticmethod
     def to_array(vector: Dict[str, np.ndarray]) -> np.ndarray:
-        return np.array([vector["x"], vector["y"], vector["z"]])
+        # return np.array([vector["x"], vector["y"], vector["z"]])
+        # Re-arrange to match convention
+        return np.array([vector["z"], vector["x"], vector["y"]])
 
     @staticmethod
     def _send_request(request: Dict[str, Any]) -> Dict[str, Any]:
@@ -331,7 +341,7 @@ class WalkingRobotIKEnv(gym.Env):
         # use the starting position to initialize translation and rotation matrix
         self.translation = -self.robot_position
         # NOTE: We assume flat ground
-        self.translation.z = 0  # don't move in z
+        # self.translation.z = 0  # don't move in z
         self.start_heading = self.heading
         self.rotation_matrix = R.from_euler("z", -self.heading, degrees=False).as_matrix()
 
@@ -367,7 +377,7 @@ class WalkingRobotIKEnv(gym.Env):
         heading_cost *= self.weight_heading_deviation
         # TODO(toni): check convention
         # use delta in x direction as distance that was travelled
-        distance_reward = self.delta_world_position.z * self.weight_distance_traveled
+        distance_reward = self.delta_world_position.x * self.weight_distance_traveled
 
         if self.verbose > 1:
             # f"Continuity Cost: {continuity_cost:5f}
@@ -393,7 +403,7 @@ class WalkingRobotIKEnv(gym.Env):
         :return: normalized squared value for deviation from a straight line
         """
         # TODO(toni): adapt to correct direction
-        deviation = self.world_position.x
+        deviation = self.world_position.y
         deviation = deviation / self.threshold_center_deviation
         return deviation ** 2
 
@@ -424,7 +434,7 @@ class WalkingRobotIKEnv(gym.Env):
         """
         # TODO(toni): check convention
         # NOTE: probably world_position is fine here
-        return bool(self.robot_position.y < self.crawling_height_limit)
+        return bool(self.robot_position.z < self.crawling_height_limit)
 
     def is_terminal_state(self) -> bool:
         """
@@ -432,7 +442,7 @@ class WalkingRobotIKEnv(gym.Env):
         """
         has_fallen = self.has_fallen()
         # TODO(toni): check convention
-        is_centered = math.fabs(self.world_position.x) < self.threshold_center_deviation
+        is_centered = math.fabs(self.world_position.y) < self.threshold_center_deviation
         # Deactivate crawling detection for sim
         # is_crawling = self.is_crawling()
         is_crawling = False
