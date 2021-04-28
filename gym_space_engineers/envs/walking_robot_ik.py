@@ -301,6 +301,8 @@ class WalkingRobotIKEnv(gym.Env):
     def _send_initial_request(self) -> Dict[str, Any]:
         request = {
             "type": "Initial",
+            "blueprintName": "Mech-v0-NS",
+            "environment": "Obstacles5",
             "detach": self.detach,
         }
         response = self._send_request(request)

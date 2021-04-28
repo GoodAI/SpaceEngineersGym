@@ -43,14 +43,14 @@ class FakeServer(object):
 
             # Default response
             # Rotated 180deg
-            response = dict(
-                position=dict(x=1, y=1, z=-self.step),
-                right=dict(x=1, y=0, z=0),
-                forward=dict(x=0, y=0, z=-1),
-                up=dict(x=0, y=1, z=0),
-                endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
-                id=1,
-            )
+            # response = dict(
+            #     position=dict(x=1, y=1, z=-self.step),
+            #     right=dict(x=1, y=0, z=0),
+            #     forward=dict(x=0, y=0, z=-1),
+            #     up=dict(x=0, y=1, z=0),
+            #     endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
+            #     id=1,
+            # )
             # Aligned with z axis
             # response = dict(
             #     position=dict(x=1, y=1, z=self.step),
@@ -58,16 +58,18 @@ class FakeServer(object):
             #     forward=dict(x=0, y=0, z=1),
             #     up=dict(x=0, y=1, z=0),
             #     endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
+            #     id=2,
             # )
 
             # Rotated 90deg
-            # response = dict(
-            #     position=dict(x=self.step, y=1, z=1),
-            #     right=dict(x=0, y=0, z=1),
-            #     forward=dict(x=1, y=0, z=0),
-            #     up=dict(x=0, y=1, z=0),
-            #     endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
-            # )
+            response = dict(
+                position=dict(x=self.step, y=1, z=1),
+                right=dict(x=0, y=0, z=1),
+                forward=dict(x=1, y=0, z=0),
+                up=dict(x=0, y=1, z=0),
+                endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
+                id=3,
+            )
 
             #  Send reply back to client
             response_message = json.dumps(response)
