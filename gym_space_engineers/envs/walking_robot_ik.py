@@ -197,7 +197,6 @@ class WalkingRobotIKEnv(gym.Env):
         # otherwise we need to use robot and world position
         self.old_world_position = Point3D(np.zeros(3))
         self._reset_transform()
-
         return self._get_observation(response)
 
     def _update_robot_pose(self, response: Dict[str, Any]) -> None:
@@ -208,6 +207,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         # TODO(toni): find right convention
         rot_mat = R.from_matrix(np.array([right, forward, up]).T)
+        self.current_rotation_matrix = rot_mat.as_matrix()
         self.current_rot = rot_mat.as_euler("xyz", degrees=False)
         # Forward direction is at +90deg (compared to the "right" vector)
         self.heading = normalize_angle(self.current_rot[2] + np.pi / 2)  # extract yaw
@@ -343,8 +343,7 @@ class WalkingRobotIKEnv(gym.Env):
         # NOTE: We assume flat ground
         # self.translation.z = 0  # don't move in z
         self.start_heading = self.heading
-        self.rotation_matrix = R.from_euler("z", -self.heading, degrees=False).as_matrix()
-
+        self.rotation_matrix = self.current_rotation_matrix.copy()
         self._update_world_position()
         self.delta_world_position = Point3D(np.zeros(3))
 
@@ -376,8 +375,8 @@ class WalkingRobotIKEnv(gym.Env):
         heading_cost, is_headed = self._heading_cost()
         heading_cost *= self.weight_heading_deviation
         # TODO(toni): check convention
-        # use delta in x direction as distance that was travelled
-        distance_reward = self.delta_world_position.x * self.weight_distance_traveled
+        # use delta in y direction as distance that was travelled
+        distance_reward = self.delta_world_position.y * self.weight_distance_traveled
 
         if self.verbose > 1:
             # f"Continuity Cost: {continuity_cost:5f}
@@ -403,7 +402,7 @@ class WalkingRobotIKEnv(gym.Env):
         :return: normalized squared value for deviation from a straight line
         """
         # TODO(toni): adapt to correct direction
-        deviation = self.world_position.y
+        deviation = self.world_position.x
         deviation = deviation / self.threshold_center_deviation
         return deviation ** 2
 
@@ -442,7 +441,7 @@ class WalkingRobotIKEnv(gym.Env):
         """
         has_fallen = self.has_fallen()
         # TODO(toni): check convention
-        is_centered = math.fabs(self.world_position.y) < self.threshold_center_deviation
+        is_centered = math.fabs(self.world_position.x) < self.threshold_center_deviation
         # Deactivate crawling detection for sim
         # is_crawling = self.is_crawling()
         is_crawling = False

@@ -30,6 +30,17 @@ class FakeServer(object):
             # print(f"Received request: {request}")
             self.step += 1
 
+            if request["type"] == "Initial":
+                pass
+            elif request["type"] == "Stop":
+                self.stop_thread = True
+            elif request["type"] == "Command":
+                pass
+            elif request["type"] == "Reset":
+                self.step = 0
+            else:
+                raise NotImplementedError()
+
             # Default response
             # Rotated 180deg
             response = dict(
@@ -38,6 +49,7 @@ class FakeServer(object):
                 forward=dict(x=0, y=0, z=-1),
                 up=dict(x=0, y=1, z=0),
                 endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
+                id=1,
             )
             # Aligned with z axis
             # response = dict(
@@ -48,16 +60,14 @@ class FakeServer(object):
             #     endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
             # )
 
-            if request["type"] == "Initial":
-                response["id"] = 1
-            elif request["type"] == "Stop":
-                self.stop_thread = True
-            elif request["type"] == "Command":
-                pass
-            elif request["type"] == "Reset":
-                self.step = 0
-            else:
-                raise NotImplementedError()
+            # Rotated 90deg
+            # response = dict(
+            #     position=dict(x=self.step, y=1, z=1),
+            #     right=dict(x=0, y=0, z=1),
+            #     forward=dict(x=1, y=0, z=0),
+            #     up=dict(x=0, y=1, z=0),
+            #     endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
+            # )
 
             #  Send reply back to client
             response_message = json.dumps(response)
