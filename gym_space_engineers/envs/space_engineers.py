@@ -33,7 +33,7 @@ class SpaceEngineersEnv(gym.Env):
         self.agent = AgentController()
 
         # Base position is the center
-        self.base_position = np.array([-510.71, 379, 385.20])
+        self.base_position = np.array([-510.71, 376.5, 385.20])
         self.position = np.array([0, 0])
 
         self.observation_space = spaces.Box(low=np.zeros(16), high=np.ones(16), dtype=np.float32)
@@ -44,14 +44,14 @@ class SpaceEngineersEnv(gym.Env):
 
     @staticmethod
     def _get_position(observation):
-        position_raw = observation["Position"]
-        position = np.array([position_raw["X"], position_raw["Y"], position_raw["Z"]])
+        position_raw = observation["position"]
+        position = np.array([position_raw["x"], position_raw["y"], position_raw["z"]])
         return position
 
     @staticmethod
     def _get_2d_position(observation):
-        position_raw = observation["Position"]
-        position = np.array([position_raw["X"], position_raw["Z"]])
+        position_raw = observation["position"]
+        position = np.array([position_raw["x"], position_raw["z"]])
         return position
 
     @staticmethod
@@ -65,7 +65,7 @@ class SpaceEngineersEnv(gym.Env):
     def _get_observation(self, observation):
         position = self._get_position(observation) - self.base_position
         position_2d = np.array([position[0], position[2]])
-        raycast_results = np.array(observation["RayCastResults"])
+        raycast_results = np.array(observation["rayCastResults"])
         concat = np.concatenate((position_2d, raycast_results))
 
         return concat
@@ -100,8 +100,13 @@ if __name__ == "__main__":
 
     env = gym.make('SpaceEngineers-v0')
     env.reset()
-    for _ in range(1000):
+
+    for _ in range(20):
         env.render()
-        observation, _, _, _ = env.step(env.action_space.sample())
-        print(observation)
+        action = env.action_space.sample()
+
+        for __ in range(20):
+            observation, _, _, _ = env.step(action)
+            # print(observation)
+
     env.close()
