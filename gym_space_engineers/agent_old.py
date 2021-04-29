@@ -1,5 +1,5 @@
-import socket
 import json
+import socket
 
 SERVER_IP = "localhost"
 SERVER_PORT = 9678
@@ -20,7 +20,7 @@ class AgentController:
             "Cmd": "AGENTCOMMAND",
             "Arg": command,
         }
-        message_serialized = json.dumps(message, separators=(',', ':'))
+        message_serialized = json.dumps(message, separators=(",", ":"))
         self.socket.sendall(bytes(message_serialized + "\n", "utf-8"))
 
         return self._get_observation()
@@ -37,41 +37,49 @@ class AgentController:
 
     def move(self, move_direction, jump=False, num_frames=1):
         for i in range(num_frames):
-            observation = self._send_command({
-                "Cmd": "MOVETOWARD",
-                "Arg": {
-                    "Object1": vars(move_direction),
-                    "Object2": jump,
-                },
-            })
+            observation = self._send_command(
+                {
+                    "Cmd": "MOVETOWARD",
+                    "Arg": {
+                        "Object1": vars(move_direction),
+                        "Object2": jump,
+                    },
+                }
+            )
 
         return observation
 
     def rotate(self, rotation, num_frames=1):
         for i in range(num_frames):
-            observation = self._send_command({
-                "Cmd": "MOVE_ROTATE",
-                "Arg": {
-                    "Rotation3": vars(rotation),
-                },
-            })
+            observation = self._send_command(
+                {
+                    "Cmd": "MOVE_ROTATE",
+                    "Arg": {
+                        "Rotation3": vars(rotation),
+                    },
+                }
+            )
 
         return observation
 
     def teleport(self, position):
-        observation = self._send_command({
-            "Cmd": "TELEPORT",
-            "Arg": {
-                "Object1": vars(position),
-            },
-        })
+        observation = self._send_command(
+            {
+                "Cmd": "TELEPORT",
+                "Arg": {
+                    "Object1": vars(position),
+                },
+            }
+        )
 
         return observation
 
     def observe(self):
-        return self._send_command({
-            "Cmd": "OBSERVE",
-        })
+        return self._send_command(
+            {
+                "Cmd": "OBSERVE",
+            }
+        )
 
     def close_connection(self):
         self.socket.close()
@@ -91,7 +99,7 @@ class MoveArgs:
         }
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     agent = AgentController()
 
     print("Do nothing, just observe and print the observation")

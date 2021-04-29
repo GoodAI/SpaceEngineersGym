@@ -40,7 +40,7 @@ class WalkingRobotIKEnv(gym.Env):
         weight_heading_deviation: float = 1,
         control_frequency: float = 20.0,
         max_action: float = 5.0,
-        max_speed: float= 15.0,
+        max_speed: float = 15.0,
         limit_control_freq: bool = True,
         verbose: int = 1,
     ):
@@ -83,12 +83,12 @@ class WalkingRobotIKEnv(gym.Env):
         self.action_lower_limits = np.ones(self.number_of_legs * self.num_dim_per_leg) * -self.max_action
 
         # Limit Y axis to be at most 0 (not above the shoulder)
-        self.action_upper_limits[1:: self.num_dim_per_leg] = 0.0
+        self.action_upper_limits[1 :: self.num_dim_per_leg] = 0.0
         # Limit Left legs x axis to be at most zero
-        self.action_upper_limits[0:self.action_dim // 2: self.num_dim_per_leg] = 0.0
+        self.action_upper_limits[0 : self.action_dim // 2 : self.num_dim_per_leg] = 0.0
 
         # Limit Right legs x axis to be at least zero
-        self.action_lower_limits[self.action_dim // 2:: self.num_dim_per_leg] = 0.0
+        self.action_lower_limits[self.action_dim // 2 :: self.num_dim_per_leg] = 0.0
 
         # Update limits for speed input
         self.action_upper_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.max_speed
@@ -324,7 +324,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         return response
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         pass
 
     def close(self):
@@ -478,7 +478,7 @@ if __name__ == "__main__":
         action[:, 0:3] /= 10
 
     for _ in range(1):
-        env = gym.make('SpaceEngineers-WalkingRobot-IK-v0', detach=False)
+        env = gym.make("SpaceEngineers-WalkingRobot-IK-v0", detach=False)
 
         observation = env.reset()
         print(observation)

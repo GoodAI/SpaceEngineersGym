@@ -1,4 +1,5 @@
 import json
+
 import zmq
 
 context = zmq.Context()
@@ -11,6 +12,7 @@ class AgentController:
     Simple agent controller for Space Engineers.
     It connects to the iv4xr-plugin-se via TCP/IP socket to control the game.
     """
+
     def __init__(self):
         self.id = None
         self._send_initial_request()
@@ -38,25 +40,31 @@ class AgentController:
 
     def move(self, move_direction, jump=False, num_frames=1):
         for _ in range(num_frames):
-            observation = self._send_command({
-                "type": "Move",
-                "move": vars(move_direction),
-            })
+            observation = self._send_command(
+                {
+                    "type": "Move",
+                    "move": vars(move_direction),
+                }
+            )
 
         return observation
 
     def teleport(self, position):
-        observation = self._send_command({
-            "type": "Teleport",
-            "position": vars(position),
-        })
+        observation = self._send_command(
+            {
+                "type": "Teleport",
+                "position": vars(position),
+            }
+        )
 
         return observation
 
     def observe(self):
-        return self._send_command({
-            "type": "Observe",
-        })
+        return self._send_command(
+            {
+                "type": "Observe",
+            }
+        )
 
     def close_connection(self):
         if self.id is not None:
@@ -88,7 +96,7 @@ class MoveArgs:
         }
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     agent = AgentController()
 
     print("Do nothing, just observe and print the observation")
