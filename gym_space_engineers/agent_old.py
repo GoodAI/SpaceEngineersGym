@@ -36,7 +36,7 @@ class AgentController:
         return self.move(MoveArgs(0, 0, -1), num_frames=num_frames)
 
     def move(self, move_direction, jump=False, num_frames=1):
-        for i in range(num_frames):
+        for _ in range(num_frames):
             observation = self._send_command(
                 {
                     "Cmd": "MOVETOWARD",
@@ -50,7 +50,7 @@ class AgentController:
         return observation
 
     def rotate(self, rotation, num_frames=1):
-        for i in range(num_frames):
+        for _ in range(num_frames):
             observation = self._send_command(
                 {
                     "Cmd": "MOVE_ROTATE",
