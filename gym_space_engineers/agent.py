@@ -1,8 +1,10 @@
 import socket
 import json
+import zmq
 
-SERVER_IP = "localhost"
-SERVER_PORT = 9678
+context = zmq.Context()
+socket = context.socket(zmq.REQ)
+socket.connect("tcp://localhost:5562")
 
 
 class AgentController:
@@ -10,71 +12,67 @@ class AgentController:
     Simple agent controller for Space Engineers.
     It connects to the iv4xr-plugin-se via TCP/IP socket to control the game.
     """
-
     def __init__(self):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((SERVER_IP, SERVER_PORT))
+        self.id = None
+        self._send_initial_request()
 
     def _send_command(self, command):
-        message = {
-            "Cmd": "AGENTCOMMAND",
-            "Arg": command,
+        request = {
+            "id": self.id,
+            "type": "Command",
+            "command": command,
         }
-        message_serialized = json.dumps(message, separators=(',', ':'))
-        self.socket.sendall(bytes(message_serialized + "\n", "utf-8"))
 
-        return self._get_observation()
+        response = self._send_request(request)
 
-    def _get_observation(self):
-        data_bytes = self.socket.recv(100000)
-        data_str = data_bytes.decode("UTF-8")
-        observation = json.loads(data_str)
+        return response
 
-        return observation
+    def _send_request(self, request):
+        request_message = json.dumps(request)
+        socket.send(request_message.encode("UTF-8"))
+        response = json.loads(socket.recv())
+
+        return response
 
     def move_forward(self, num_frames=1):
-        return self.move(MoveArgs(0, 0, -1), num_frames=num_frames)
+        return self.move(MoveArgs(0, 0, -10), num_frames=num_frames)
 
     def move(self, move_direction, jump=False, num_frames=1):
         for i in range(num_frames):
             observation = self._send_command({
-                "Cmd": "MOVETOWARD",
-                "Arg": {
-                    "Object1": vars(move_direction),
-                    "Object2": jump,
-                },
-            })
-
-        return observation
-
-    def rotate(self, rotation, num_frames=1):
-        for i in range(num_frames):
-            observation = self._send_command({
-                "Cmd": "MOVE_ROTATE",
-                "Arg": {
-                    "Rotation3": vars(rotation),
-                },
+                "type": "Move",
+                "move": vars(move_direction),
             })
 
         return observation
 
     def teleport(self, position):
         observation = self._send_command({
-            "Cmd": "TELEPORT",
-            "Arg": {
-                "Object1": vars(position),
-            },
+            "type": "Teleport",
+            "position": vars(position),
         })
 
         return observation
 
     def observe(self):
         return self._send_command({
-            "Cmd": "OBSERVE",
+            "type": "Observe",
         })
 
     def close_connection(self):
-        self.socket.close()
+        if self.id is not None:
+            request = {
+                "type": "Stop",
+                "id": self.id,
+            }
+            self._send_request(request)
+
+    def _send_initial_request(self):
+        request = {
+            "type": "Initial",
+        }
+        response = self._send_request(request)
+        self.id = response["id"]
 
 
 class MoveArgs:
@@ -102,12 +100,8 @@ if __name__ == '__main__':
     observation = agent.move_forward(50)
     print(observation)
 
-    print("Rotate for 50 frames and print the observation")
-    observation = agent.rotate(MoveArgs(0, 50, 0), num_frames=50)
-    print(observation)
-
     print("Teleport")
-    observation = agent.teleport(MoveArgs(500, 500, 500))
+    observation = agent.teleport(MoveArgs(-510.71, 379, 385.20))
     print(observation)
 
     agent.close_connection()
