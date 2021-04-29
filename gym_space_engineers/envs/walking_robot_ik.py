@@ -205,8 +205,6 @@ class WalkingRobotIKEnv(gym.Env):
 
         # IMPORTANT: update robot pose before reseting the transform
         self._update_robot_pose(response)
-        # TODO(toni): check what is the reset position
-        # otherwise we need to use robot and world position
         self.old_world_position = Point3D(np.zeros(3))
         self._reset_transform()
         return self._get_observation(response)
@@ -217,11 +215,9 @@ class WalkingRobotIKEnv(gym.Env):
         forward = self.to_array(response["forward"])
         up = self.to_array(response["up"])
 
-        # TODO(toni): find right convention
         rot_mat = R.from_matrix(np.array([right, forward, up]).T)
         self.current_rotation_matrix = rot_mat.as_matrix()
         self.current_rot = rot_mat.as_euler("xyz", degrees=False)
-        # TODO(toni): check
         self.heading = normalize_angle(self.current_rot[2])  # extract yaw
         # self.ang_vel = np.array(response["ang_vel"])
         self.robot_position = Point3D(position)
@@ -389,7 +385,7 @@ class WalkingRobotIKEnv(gym.Env):
         continuity_cost = 0.0
         heading_cost, is_headed = self._heading_cost()
         heading_cost *= self.weight_heading_deviation
-        # TODO(toni): check convention
+        # TODO(toni): use desired speed instead
         # use delta in y direction as distance that was travelled
         distance_reward = self.delta_world_position.y * self.weight_distance_traveled
 
@@ -416,7 +412,6 @@ class WalkingRobotIKEnv(gym.Env):
 
         :return: normalized squared value for deviation from a straight line
         """
-        # TODO(toni): adapt to correct direction
         deviation = self.world_position.x
         deviation = deviation / self.threshold_center_deviation
         return deviation ** 2
@@ -437,7 +432,6 @@ class WalkingRobotIKEnv(gym.Env):
         """
         :return: True if the robot has fallen (roll or pitch above threshold)
         """
-        # TODO(toni): check the indices
         return bool(
             math.fabs(self.current_rot[0]) > self.roll_over_limit or math.fabs(self.current_rot[1]) > self.roll_over_limit
         )
@@ -446,7 +440,6 @@ class WalkingRobotIKEnv(gym.Env):
         """
         :return True if the robot is too low
         """
-        # TODO(toni): check convention
         # NOTE: probably world_position is fine here
         return bool(self.robot_position.z < self.crawling_height_limit)
 
@@ -455,7 +448,6 @@ class WalkingRobotIKEnv(gym.Env):
         :return: True if the robot is in a terminal state (episode should end)
         """
         has_fallen = self.has_fallen()
-        # TODO(toni): check convention
         is_centered = math.fabs(self.world_position.x) < self.threshold_center_deviation
         # Deactivate crawling detection for sim
         # is_crawling = self.is_crawling()
