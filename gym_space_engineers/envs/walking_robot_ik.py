@@ -27,24 +27,28 @@ class WalkingRobotIKEnv(gym.Env):
     :param weight_heading_deviation: weight for not walking with the right heading
     :param control_frequency: limit control frequency (in Hz)
     :param max_action: limit the legs to move ``max_action`` meters in each direction
+    :param max_speed: limit the max speed of the legs
     :param verbose: control verbosity of the output (useful for debug)
     """
 
     def __init__(
         self,
-        detach: bool = True,
+        detach: bool = False,
         threshold_center_deviation: float = 10000,  # TODO(toni): tune it
         weight_center_deviation: float = 1,
         weight_distance_traveled: float = 50,
         weight_heading_deviation: float = 1,
         control_frequency: float = 20.0,
-        max_action: float = 10.0,
+        max_action: float = 5.0,
+        max_speed: float= 15.0,
+        limit_control_freq: bool = True,
         verbose: int = 1,
     ):
         self.detach = detach
         self.id = None
 
         # Target control frequency in Hz
+        self.limit_control_freq = limit_control_freq
         self.control_frequency = control_frequency
         self.wanted_dt = 1.0 / self.control_frequency
         self.current_sleep_time = self.wanted_dt
@@ -68,14 +72,23 @@ class WalkingRobotIKEnv(gym.Env):
 
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.input_dimension,))
 
-        # For now, we expect that the legs can move 10 meters in each direction
+        # For now, we expect that the legs can move 5 meters in each direction
         # We use this value to map the [-1,1] interval to the actual reachable space
         self.max_action = max_action
         self.min_speed = 0
-        self.max_speed = 100
+        self.max_speed = max_speed
+        self.action_dim = self.number_of_legs * self.num_dim_per_leg
 
         self.action_upper_limits = np.ones(self.number_of_legs * self.num_dim_per_leg) * self.max_action
         self.action_lower_limits = np.ones(self.number_of_legs * self.num_dim_per_leg) * -self.max_action
+
+        # Limit Y axis to be at most 0 (not above the shoulder)
+        self.action_upper_limits[1:: self.num_dim_per_leg] = 0.0
+        # Limit Left legs x axis to be at most zero
+        self.action_upper_limits[0:self.action_dim // 2: self.num_dim_per_leg] = 0.0
+
+        # Limit Right legs x axis to be at least zero
+        self.action_lower_limits[self.action_dim // 2:: self.num_dim_per_leg] = 0.0
 
         # Update limits for speed input
         self.action_upper_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.max_speed
@@ -281,7 +294,8 @@ class WalkingRobotIKEnv(gym.Env):
 
         if self.verbose > 1:
             print(f"{1 / dt:.2f}Hz")
-        time.sleep(self.current_sleep_time)
+        if self.limit_control_freq:
+            time.sleep(self.current_sleep_time)
         return dt
 
     @staticmethod
@@ -466,7 +480,7 @@ if __name__ == "__main__":
     for _ in range(1):
         env = gym.make('SpaceEngineers-WalkingRobot-IK-v0', detach=False)
 
-        observation, _, _, _ = env.reset()
+        observation = env.reset()
         print(observation)
 
         # All legs from low to high
@@ -484,7 +498,7 @@ if __name__ == "__main__":
 
         time.sleep(0.3)
 
-        observation, _, _, _ = env.reset()
+        observation = env.reset()
         print(observation)
 
         # All legs from back to front
