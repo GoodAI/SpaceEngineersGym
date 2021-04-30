@@ -1,6 +1,7 @@
 import gym
 import numpy as np
 from gym import spaces
+
 from gym_space_engineers.agent import AgentController, MoveArgs
 
 
@@ -28,7 +29,6 @@ class SpaceEngineersEnv(gym.Env):
     In order for this environment to work, the agent must be located in the maze world.
     """
 
-
     def __init__(self):
         self.agent = AgentController()
 
@@ -39,8 +39,11 @@ class SpaceEngineersEnv(gym.Env):
         self.observation_space = spaces.Box(low=np.zeros(16), high=np.ones(16), dtype=np.float32)
 
         self.action_bounds = 1
-        self.action_space = spaces.Box(low=np.array([-self.action_bounds, -self.action_bounds]),
-                                       high=np.array([self.action_bounds, self.action_bounds]), dtype=np.float32)
+        self.action_space = spaces.Box(
+            low=np.array([-self.action_bounds, -self.action_bounds]),
+            high=np.array([self.action_bounds, self.action_bounds]),
+            dtype=np.float32,
+        )
 
     @staticmethod
     def _get_position(observation):
@@ -77,9 +80,7 @@ class SpaceEngineersEnv(gym.Env):
         reward = abs(observation[0]) + abs(observation[1])
 
         # return observation, reward, isDone, info
-        return observation[2:], reward, False, {
-            'position': observation[0:2]
-        }
+        return observation[2:], reward, False, {"position": observation[0:2]}
 
     def reset(self):
         observation = self.agent.teleport(self._get_move_args(self.base_position))
@@ -87,7 +88,7 @@ class SpaceEngineersEnv(gym.Env):
 
         return observation[2:]
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         ...
 
     def close(self):
@@ -98,7 +99,7 @@ class SpaceEngineersEnv(gym.Env):
 if __name__ == "__main__":
     import gym
 
-    env = gym.make('SpaceEngineers-v0')
+    env = gym.make("SpaceEngineers-v0")
     env.reset()
 
     for _ in range(20):

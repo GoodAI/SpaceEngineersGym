@@ -4,13 +4,13 @@ from gym import spaces
 
 
 class SpaceEngineersDummyEnv(gym.Env):
-
     def __init__(self):
-        self.bounds = 1000.
+        self.bounds = 1000.0
         self.position = np.array([0, 0])
-        self.observation_space = spaces.Box(low=np.array([-self.bounds, -self.bounds]),
-                                            high=np.array([self.bounds, self.bounds]), dtype=np.float32)
-        self.action_space = spaces.Box(low=np.array([-1., -1.]), high=np.array([1., 1.]), dtype=np.float32)
+        self.observation_space = spaces.Box(
+            low=np.array([-self.bounds, -self.bounds]), high=np.array([self.bounds, self.bounds]), dtype=np.float32
+        )
+        self.action_space = spaces.Box(low=np.array([-1.0, -1.0]), high=np.array([1.0, 1.0]), dtype=np.float32)
 
     def step(self, action):
         self.position = self.position + action
@@ -24,7 +24,7 @@ class SpaceEngineersDummyEnv(gym.Env):
 
         return self.position
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         ...
 
     def close(self):

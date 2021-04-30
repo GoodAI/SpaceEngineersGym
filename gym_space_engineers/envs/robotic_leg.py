@@ -17,11 +17,15 @@ class RoboticLegEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=np.array([-self.observation_bounds, -self.observation_bounds, -self.observation_bounds]),
             high=np.array([self.observation_bounds, self.observation_bounds, self.observation_bounds]),
-            dtype=np.float32)
+            dtype=np.float32,
+        )
 
         self.action_bounds = 1
-        self.action_space = spaces.Box(low=np.repeat(-self.action_bounds, self.rotorsCount),
-                                       high=np.repeat(self.action_bounds, self.rotorsCount), dtype=np.float32)
+        self.action_space = spaces.Box(
+            low=np.repeat(-self.action_bounds, self.rotorsCount),
+            high=np.repeat(self.action_bounds, self.rotorsCount),
+            dtype=np.float32,
+        )
 
     def step(self, action):
         configurations = [(action[i].item()) for i in range(self.rotorsCount)]
@@ -41,16 +45,17 @@ class RoboticLegEnv(gym.Env):
     def reset(self):
         return np.zeros(3)
 
-    def render(self, mode='human'):
+    def render(self, mode="human"):
         ...
 
 
 # Test the environment by doing 1000 random steps in the game
 if __name__ == "__main__":
-    import gym
     import time
 
-    env = gym.make('SpaceEngineers-RoboticLeg-v0')
+    import gym
+
+    env = gym.make("SpaceEngineers-RoboticLeg-v0")
     env.reset()
     for _ in range(1000):
         env.render()
