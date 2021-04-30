@@ -1,4 +1,4 @@
-# Maze (ExploreEnvironments)
+# Maze navigation gym
 
 ## How to load world
 
