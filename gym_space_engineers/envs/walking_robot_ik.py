@@ -1,6 +1,8 @@
 import json
 import math
+import os
 import time
+from enum import Enum
 from typing import Any, Dict, Tuple
 
 import gym
@@ -11,9 +13,17 @@ from scipy.spatial.transform import Rotation as R
 
 from gym_space_engineers.util.util import Point3D, in_relative_frame, normalize_angle
 
+SERVER_ADDR = os.environ.get("SE_SERVER_ADDR", "localhost:5560")
 context = zmq.Context()
 socket = context.socket(zmq.REQ)
-socket.connect("tcp://localhost:5560")
+socket.connect(f"tcp://{SERVER_ADDR}")
+
+
+class Task(Enum):
+    FORWARD = "forward"
+    BACKWARD = "backward"
+    TURN_LEFT = "turn_left"
+    TURN_RIGHT = "turn_right"
 
 
 class WalkingRobotIKEnv(gym.Env):
@@ -28,6 +38,9 @@ class WalkingRobotIKEnv(gym.Env):
     :param control_frequency: limit control frequency (in Hz)
     :param max_action: limit the legs to move ``max_action`` meters in each direction
     :param max_speed: limit the max speed of the legs
+    :param desired_linear_speed: desired forward/backward speed in m/s
+    :param desired_angular_speed: desired angular (left/right) speed in deg/s
+    :param task: current task id, one of "forward", "backward", "turn_left", "turn_right"
     :param verbose: control verbosity of the output (useful for debug)
     """
 
@@ -40,12 +53,15 @@ class WalkingRobotIKEnv(gym.Env):
         weight_heading_deviation: float = 1,
         control_frequency: float = 20.0,
         max_action: float = 5.0,
-        max_speed: float = 15.0,
+        max_speed: float = 8.0,
         limit_control_freq: bool = True,
+        desired_linear_speed: float = 1.0,
+        desired_angular_speed: float = 30.0,
+        task: str = "forward",
         verbose: int = 1,
     ):
         self.detach = detach
-        self.id = None
+        self.id = None  # client id
 
         # Target control frequency in Hz
         self.limit_control_freq = limit_control_freq
@@ -61,14 +77,25 @@ class WalkingRobotIKEnv(gym.Env):
         self.number_of_legs = 6
         self.num_dim_per_leg = 4
 
+        self.desired_linear_speed = desired_linear_speed
+        self.desired_angular_speed = np.deg2rad(desired_angular_speed)
+
+        try:
+            self.task = Task(task)
+        except ValueError:
+            raise ValueError(f"`task` must be one of {list(Task)}, not {task}")
+
         # Observation space dim
         num_var_per_joint = 0  # position,velocity,torque?
+        dim_joints = self.number_of_legs * self.num_dim_per_leg * num_var_per_joint
+        dim_velocity = 3
         dim_current_rotation = 3
         dim_heading = 1  # deviation to desired heading
         dim_end_effector = self.number_of_legs * 3
-        dim_additional = dim_current_rotation + dim_heading + dim_end_effector
+        dim_command = 2  # forward/backward + left/right
+        dim_additional = dim_heading + dim_end_effector + dim_command
 
-        self.input_dimension = self.number_of_legs * self.num_dim_per_leg * num_var_per_joint + dim_additional
+        self.input_dimension = dim_joints + dim_velocity + dim_current_rotation + dim_additional
 
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.input_dimension,))
 
@@ -112,7 +139,7 @@ class WalkingRobotIKEnv(gym.Env):
         self.threshold_center_deviation = threshold_center_deviation
 
         # Early termination condition and costs
-        self.early_termination_penalty = 2
+        self.early_termination_penalty = 100
         # Allow the robot to deviate 45deg from initial orientation before
         # terminating an episode
         self.heading_deviation_threshold_radians = np.deg2rad(45.0)
@@ -239,23 +266,35 @@ class WalkingRobotIKEnv(gym.Env):
         # joint_velocities = np.array(response["joint_velocities"])
         # TODO(toni): add velocity
         end_effector_positions = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
+        # Use finite difference
+        velocity = np.array(self.delta_world_position) / self.wanted_dt
 
         heading_deviation = normalize_angle(self.heading - self.start_heading)
+
+        # Append input command, one for forward/backward
+        # one for turn left/right
+        # TODO(toni): allow a mix of commands
+        input_command = {
+            Task.FORWARD: [1, 0],
+            Task.BACKWARD: [-1, 0],
+            Task.TURN_LEFT: [0, 1],
+            Task.TURN_RIGHT: [0, -1],
+        }[self.task]
 
         observation = np.concatenate(
             (
                 # TODO(toni): check normalization
                 end_effector_positions.flatten() / self.max_action,
                 self.current_rot,
+                velocity,
                 # TODO(toni): add center deviation?
-                # TODO(toni): as we don't have velocity yet
-                # add delta in position
                 # joint_torque,
                 # joint_positions,
                 # joint_velocities,
                 # self.ang_vel,
                 # lin_acc,
                 np.array([heading_deviation]),
+                np.array(input_command)
                 # np.array([heading_deviation, dt]),
             )
         )
@@ -378,6 +417,7 @@ class WalkingRobotIKEnv(gym.Env):
 
     def _compute_reward(self, scaled_action: np.ndarray, done: bool) -> float:
 
+        # TODO(toni): update reward for turn left/right tasks
         deviation_cost = self.weight_center_deviation * self._center_deviation_cost()
 
         # continuity_cost = self.weight_continuity * self._continuity_cost(scaled_action)
@@ -385,22 +425,26 @@ class WalkingRobotIKEnv(gym.Env):
         continuity_cost = 0.0
         heading_cost, is_headed = self._heading_cost()
         heading_cost *= self.weight_heading_deviation
-        # TODO(toni): use desired speed instead
+
+        # Desired delta in distance
+        desired_delta = self.desired_linear_speed * self.wanted_dt
+
+        if self.task == Task.BACKWARD:
+            desired_delta *= -1
+
+        linear_speed_cost = (desired_delta - self.delta_world_position.y) ** 2 / desired_delta ** 2
+        linear_speed_cost = self.weight_distance_traveled * linear_speed_cost
+
         # use delta in y direction as distance that was travelled
-        distance_reward = self.delta_world_position.y * self.weight_distance_traveled
+        # linear_speed_cost = self.delta_world_position.y * self.weight_distance_traveled
 
         if self.verbose > 1:
             # f"Continuity Cost: {continuity_cost:5f}
-            print(f"Distance Reward: {distance_reward:.5f}")
+            print(f"Linear Speed Cost: {linear_speed_cost:.5f}")
             print(f"Deviation cost: {deviation_cost}")
             print(f"Heading cost: {heading_cost}")
 
-        # Do not reward agent if it has terminated due to fall/not headed/crawling/...
-        # to avoid encouraging aggressive behavior
-        if done:
-            distance_reward = 0.0
-
-        reward = -(deviation_cost + heading_cost + continuity_cost) + distance_reward
+        reward = -(deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
