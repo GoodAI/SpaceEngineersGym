@@ -1,5 +1,6 @@
 import json
 from threading import Thread
+import os
 
 import gym
 import zmq
@@ -7,6 +8,8 @@ from stable_baselines3.common.env_checker import check_env
 
 import gym_space_engineers  # noqa: F401
 
+# Set test addr
+os.environ["SE_SERVER_ADDR"] = "localhost:5566"
 
 class FakeServer(object):
     def __init__(self):
@@ -22,7 +25,7 @@ class FakeServer(object):
     def run(self):
         context = zmq.Context()
         socket = context.socket(zmq.REP)
-        socket.bind("tcp://*:5560")
+        socket.bind("tcp://*:5566")
 
         while not self.stop_thread:
             #  Wait for next request from client
