@@ -1,6 +1,6 @@
 import json
-from threading import Thread
 import os
+from threading import Thread
 
 import gym
 import zmq
@@ -10,6 +10,7 @@ import gym_space_engineers  # noqa: F401
 
 # Set test addr
 os.environ["SE_SERVER_ADDR"] = "localhost:5566"
+
 
 class FakeServer(object):
     def __init__(self):
