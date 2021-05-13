@@ -58,6 +58,7 @@ class WalkingRobotIKEnv(gym.Env):
         desired_linear_speed: float = 1.0,
         desired_angular_speed: float = 30.0,
         task: str = "forward",
+        initial_wait_period: float = 10.0,
         verbose: int = 1,
     ):
         self.detach = detach
@@ -72,6 +73,8 @@ class WalkingRobotIKEnv(gym.Env):
         self.max_dt = 2.0  # in s
         self.last_time = time.time()
         self._first_step = True
+
+        self.initial_wait_period = initial_wait_period
 
         # For now, this is hardcoded for the 6-legged robot
         self.number_of_legs = 6
@@ -350,8 +353,9 @@ class WalkingRobotIKEnv(gym.Env):
     def _send_initial_request(self) -> Dict[str, Any]:
         request = {
             "type": "Initial",
-            "blueprintName": "Mech-v0-NS",
-            "environment": "Obstacles5",
+            "blueprintName": "Mectsash-v0-NS-AM",
+            "environment": "Obstacles3",
+            "initialWaitPeriod": self.initial_wait_period,
             "detach": self.detach,
         }
         response = self._send_request(request)
