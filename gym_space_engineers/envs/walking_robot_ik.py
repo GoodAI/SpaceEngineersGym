@@ -117,16 +117,37 @@ class WalkingRobotIKEnv(gym.Env):
         self.max_speed = max_speed
         self.action_dim = self.number_of_legs * self.num_dim_per_leg
 
-        self.action_upper_limits = np.ones(self.number_of_legs * self.num_dim_per_leg) * self.max_action
-        self.action_lower_limits = np.ones(self.number_of_legs * self.num_dim_per_leg) * -self.max_action
+        self.action_upper_limits = np.ones(self.number_of_legs * self.num_dim_per_leg)
+        self.action_lower_limits = np.ones(self.number_of_legs * self.num_dim_per_leg)
 
-        # Limit Y axis to be at most 0 (not above the shoulder)
-        self.action_upper_limits[1 :: self.num_dim_per_leg] = 0.0
+        # The end effector position is defined with respect to the shoulder
+        # x: aligned with the "right" direction of the robot
+        # y: pointing downward (aligned with gravity)
+        # z: aligned with the "forward" direction of the robot
 
-        # Limit Left legs x axis to be at most zero
-        self.action_upper_limits[0 : self.action_dim // 2 : self.num_dim_per_leg] = 0.0
-        # Limit Right legs x axis to be at least zero
-        self.action_lower_limits[self.action_dim // 2 :: self.num_dim_per_leg] = 0.0
+        # TODO(toni): adapt y_max automatically
+        y_min, y_max = -self.max_action, 0.0
+        # Limit Y axis to be at most y_max (not above the shoulder)
+        self.action_upper_limits[1 :: self.num_dim_per_leg] = y_max
+        # Do not limit y_min too much for now
+        self.action_lower_limits[1 :: self.num_dim_per_leg] = y_min
+
+        # TODO(toni): adapt x_min automatically
+        x_min, x_max = 0.0, self.max_action
+        # Limit Left legs x axis to be at most x_min
+        self.action_upper_limits[0 : self.action_dim // 2 : self.num_dim_per_leg] = x_min
+        # Limit Right legs x axis to be at least x_min
+        self.action_lower_limits[self.action_dim // 2 :: self.num_dim_per_leg] = x_min
+        # Do not limit the rest too much
+        self.action_lower_limits[0 : self.action_dim // 2 : self.num_dim_per_leg] = -x_max
+        self.action_upper_limits[self.action_dim // 2 :: self.num_dim_per_leg] = x_max
+
+        # TODO(toni): deduce z_max by knowing the length of the leg
+        # and using max angle
+        z_max = self.max_action
+        # Limit z axis movement for all legs
+        self.action_lower_limits[2 :: self.num_dim_per_leg] = -z_max
+        self.action_upper_limits[2 :: self.num_dim_per_leg] = z_max
 
         # Update limits for speed input
         self.action_upper_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.max_speed
@@ -150,7 +171,7 @@ class WalkingRobotIKEnv(gym.Env):
         self.threshold_center_deviation = threshold_center_deviation
 
         # Early termination condition and costs
-        self.early_termination_penalty = 100 # 1000 when using desired speed
+        self.early_termination_penalty = 100  # 1000 when using desired speed
         # Allow the robot to deviate 45deg from initial orientation before
         # terminating an episode
         self.heading_deviation_threshold_radians = np.deg2rad(45.0)
@@ -385,8 +406,11 @@ class WalkingRobotIKEnv(gym.Env):
                 "type": "Stop",
                 "id": self.id,
             }
-            self._send_request(request)
-            socket.close()
+            try:
+                self._send_request(request)
+                socket.close()
+            except zmq.error.ZMQError:
+                pass
 
     def _additional_infos(self) -> Dict[str, Any]:
         return {}
