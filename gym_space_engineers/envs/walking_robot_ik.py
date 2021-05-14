@@ -49,16 +49,17 @@ class WalkingRobotIKEnv(gym.Env):
         detach: bool = False,
         threshold_center_deviation: float = 10000,  # TODO(toni): tune it
         weight_center_deviation: float = 1,
-        weight_distance_traveled: float = 50,
+        weight_distance_traveled: float = 5,
         weight_heading_deviation: float = 1,
         control_frequency: float = 20.0,
         max_action: float = 5.0,
-        max_speed: float = 8.0,
+        max_speed: float = 10.0,
         limit_control_freq: bool = True,
-        desired_linear_speed: float = 1.0,
+        desired_linear_speed: float = 0.8,
         desired_angular_speed: float = 30.0,
         task: str = "forward",
-        initial_wait_period: float = 10.0,
+        initial_wait_period: float = 1.0,
+        limited_control: bool = False,
         verbose: int = 1,
     ):
         self.detach = detach
@@ -75,6 +76,12 @@ class WalkingRobotIKEnv(gym.Env):
         self._first_step = True
 
         self.initial_wait_period = initial_wait_period
+        self.limited_control = limited_control
+
+        # TODO: contact indicator
+        # reduce speed for other legs (curriculum)
+        # reduce action space even more
+        # use symmetry ?
 
         # For now, this is hardcoded for the 6-legged robot
         self.number_of_legs = 6
@@ -91,6 +98,7 @@ class WalkingRobotIKEnv(gym.Env):
         # Observation space dim
         num_var_per_joint = 0  # position,velocity,torque?
         dim_joints = self.number_of_legs * self.num_dim_per_leg * num_var_per_joint
+        # TODO(toni): add angular velocity?
         dim_velocity = 3
         dim_current_rotation = 3
         dim_heading = 1  # deviation to desired heading
@@ -114,9 +122,9 @@ class WalkingRobotIKEnv(gym.Env):
 
         # Limit Y axis to be at most 0 (not above the shoulder)
         self.action_upper_limits[1 :: self.num_dim_per_leg] = 0.0
+
         # Limit Left legs x axis to be at most zero
         self.action_upper_limits[0 : self.action_dim // 2 : self.num_dim_per_leg] = 0.0
-
         # Limit Right legs x axis to be at least zero
         self.action_lower_limits[self.action_dim // 2 :: self.num_dim_per_leg] = 0.0
 
@@ -142,7 +150,7 @@ class WalkingRobotIKEnv(gym.Env):
         self.threshold_center_deviation = threshold_center_deviation
 
         # Early termination condition and costs
-        self.early_termination_penalty = 100
+        self.early_termination_penalty = 100 # 1000 when using desired speed
         # Allow the robot to deviate 45deg from initial orientation before
         # terminating an episode
         self.heading_deviation_threshold_radians = np.deg2rad(45.0)
@@ -178,6 +186,11 @@ class WalkingRobotIKEnv(gym.Env):
         scaled_action = action.copy()
         # Unscale to real action
         action = self.unscale_action(action)
+
+        if self.limited_control:
+            # Zero speed for all legs but the two front ones
+            # action[[3, 7, 15, 19]] = 0.0
+            action[[7, 11, 19, 23]] = 0.0
 
         commands = {}
         leg_ids = ["l1", "l2", "l3", "r1", "r2", "r3"]
@@ -267,7 +280,7 @@ class WalkingRobotIKEnv(gym.Env):
         # joint_torque = np.array(response["joint_torque"])
         # joint_positions = np.array(response["joint_positions"])
         # joint_velocities = np.array(response["joint_velocities"])
-        # TODO(toni): add velocity
+        # TODO(toni): CHECK THE DIM of endEffectorPositions (seems to be 2*3 and not 3*6)
         end_effector_positions = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
         # Use finite difference
         velocity = np.array(self.delta_world_position) / self.wanted_dt
@@ -373,6 +386,7 @@ class WalkingRobotIKEnv(gym.Env):
                 "id": self.id,
             }
             self._send_request(request)
+            socket.close()
 
     def _additional_infos(self) -> Dict[str, Any]:
         return {}
@@ -436,8 +450,11 @@ class WalkingRobotIKEnv(gym.Env):
         if self.task == Task.BACKWARD:
             desired_delta *= -1
 
+        # Disable desired speed for now (DEBUG ON)
         linear_speed_cost = (desired_delta - self.delta_world_position.y) ** 2 / desired_delta ** 2
-        linear_speed_cost = self.weight_distance_traveled * linear_speed_cost
+        linear_speed_cost = 0.0 * self.weight_distance_traveled * linear_speed_cost
+
+        distance_traveled = self.delta_world_position.y * self.weight_distance_traveled
 
         # use delta in y direction as distance that was travelled
         # linear_speed_cost = self.delta_world_position.y * self.weight_distance_traveled
@@ -448,7 +465,7 @@ class WalkingRobotIKEnv(gym.Env):
             print(f"Deviation cost: {deviation_cost}")
             print(f"Heading cost: {heading_cost}")
 
-        reward = -(deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
+        reward = distance_traveled + -(deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
