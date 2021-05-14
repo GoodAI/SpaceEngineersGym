@@ -60,6 +60,8 @@ class WalkingRobotIKEnv(gym.Env):
         task: str = "forward",
         initial_wait_period: float = 1.0,
         limited_control: bool = False,
+        symmetric_control: bool = False,
+        allowed_leg_angle: float = 10.0,
         verbose: int = 1,
     ):
         self.detach = detach
@@ -77,11 +79,11 @@ class WalkingRobotIKEnv(gym.Env):
 
         self.initial_wait_period = initial_wait_period
         self.limited_control = limited_control
+        self.symmetric_control = symmetric_control
 
         # TODO: contact indicator
         # reduce speed for other legs (curriculum)
         # reduce action space even more
-        # use symmetry ?
 
         # For now, this is hardcoded for the 6-legged robot
         self.number_of_legs = 6
@@ -98,8 +100,7 @@ class WalkingRobotIKEnv(gym.Env):
         # Observation space dim
         num_var_per_joint = 0  # position,velocity,torque?
         dim_joints = self.number_of_legs * self.num_dim_per_leg * num_var_per_joint
-        # TODO(toni): add angular velocity?
-        dim_velocity = 3
+        dim_velocity = 3 + 3  # Linear and angular velocity
         dim_current_rotation = 3
         dim_heading = 1  # deviation to desired heading
         dim_end_effector = self.number_of_legs * 3
@@ -124,30 +125,38 @@ class WalkingRobotIKEnv(gym.Env):
         # x: aligned with the "right" direction of the robot
         # y: pointing downward (aligned with gravity)
         # z: aligned with the "forward" direction of the robot
+        # Note: z is with respect to the center of the mech for now
 
-        # TODO(toni): adapt y_max automatically
-        y_min, y_max = -self.max_action, 0.0
+        # Get leg length by sending initial request
+        response = self._send_initial_request()
+        # Approximate leg length
+        y_init = leg_length = abs(response["endEffectorPositions"][0]["y"])
+        allowed_angle = np.deg2rad(allowed_leg_angle)
+        # Compute allowed delta in action space w.r.t. the scale of the robot
+        delta_allowed = leg_length * np.tan(allowed_angle)
+
+        # We assume symmetric shape (similar legs)
+        x_init = abs(response["endEffectorPositions"][0]["x"])
+        z_init = abs(response["endEffectorPositions"][0]["z"])
+
         # Limit Y axis to be at most y_max (not above the shoulder)
-        self.action_upper_limits[1 :: self.num_dim_per_leg] = y_max
-        # Do not limit y_min too much for now
-        self.action_lower_limits[1 :: self.num_dim_per_leg] = y_min
+        self.action_upper_limits[1 :: self.num_dim_per_leg] = 0.0
+        # Limit Y axis to be at least above initial pos
+        # TODO(toni): double check
+        self.action_lower_limits[1 :: self.num_dim_per_leg] = -y_init
 
-        # TODO(toni): adapt x_min automatically
-        x_min, x_max = 0.0, self.max_action
-        # Limit Left legs x axis to be at most x_min
-        self.action_upper_limits[0 : self.action_dim // 2 : self.num_dim_per_leg] = x_min
-        # Limit Right legs x axis to be at least x_min
-        self.action_lower_limits[self.action_dim // 2 :: self.num_dim_per_leg] = x_min
-        # Do not limit the rest too much
-        self.action_lower_limits[0 : self.action_dim // 2 : self.num_dim_per_leg] = -x_max
-        self.action_upper_limits[self.action_dim // 2 :: self.num_dim_per_leg] = x_max
+        # Limit Left legs x axis
+        self.action_lower_limits[0 : self.action_dim // 2 : self.num_dim_per_leg] = -x_init - delta_allowed
+        self.action_upper_limits[0 : self.action_dim // 2 : self.num_dim_per_leg] = min(-x_init + delta_allowed, 0.0)
+        # Limit Right legs x axis
+        self.action_lower_limits[self.action_dim // 2 :: self.num_dim_per_leg] = max(0.0, x_init - delta_allowed)
+        self.action_upper_limits[self.action_dim // 2 :: self.num_dim_per_leg] = x_init + delta_allowed
 
-        # TODO(toni): deduce z_max by knowing the length of the leg
-        # and using max angle
-        z_max = self.max_action
+        # NOTE: it seems that z init is different for each leg
+        z_inits = np.array([response["endEffectorPositions"][i]["z"] for i in range(self.number_of_legs)])
         # Limit z axis movement for all legs
-        self.action_lower_limits[2 :: self.num_dim_per_leg] = -z_max
-        self.action_upper_limits[2 :: self.num_dim_per_leg] = z_max
+        self.action_lower_limits[2 :: self.num_dim_per_leg] = z_inits - delta_allowed
+        self.action_upper_limits[2 :: self.num_dim_per_leg] = z_inits + delta_allowed
 
         # Update limits for speed input
         self.action_upper_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.max_speed
@@ -189,6 +198,7 @@ class WalkingRobotIKEnv(gym.Env):
         self.heading = 0  # heading in radians
         self.start_heading = 0
         self.current_rot = np.zeros(3)
+        self.last_rot = np.zeros(3)
 
         self.world_position = np.zeros(3)  # x,y,z world position (centered at zero at reset)
         self.robot_position = Point3D(np.zeros(3))  # x,y,z tracking position (without transform)
@@ -212,6 +222,16 @@ class WalkingRobotIKEnv(gym.Env):
             # Zero speed for all legs but the two front ones
             # action[[3, 7, 15, 19]] = 0.0
             action[[7, 11, 19, 23]] = 0.0
+
+        if self.symmetric_control:
+            # Only use the first half and then use the symmetric
+            # TODO(toni): try to tell the agent the correct action space dim
+            # Opposite x direction
+            action[self.action_dim // 2 :: self.num_dim_per_leg] = -action[0 : self.action_dim // 2 : self.num_dim_per_leg]
+            # Same y,z,speed
+            action[self.action_dim // 2 + 1 :: self.num_dim_per_leg] = action[1 : self.action_dim // 2 : self.num_dim_per_leg]
+            action[self.action_dim // 2 + 2 :: self.num_dim_per_leg] = action[2 : self.action_dim // 2 : self.num_dim_per_leg]
+            action[self.action_dim // 2 + 3 :: self.num_dim_per_leg] = action[3 : self.action_dim // 2 : self.num_dim_per_leg]
 
         commands = {}
         leg_ids = ["l1", "l2", "l3", "r1", "r2", "r3"]
@@ -281,6 +301,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         rot_mat = R.from_matrix(np.array([right, forward, up]).T)
         self.current_rotation_matrix = rot_mat.as_matrix()
+        self.last_rot = self.current_rot.copy()
         self.current_rot = rot_mat.as_euler("xyz", degrees=False)
         self.heading = normalize_angle(self.current_rot[2])  # extract yaw
         # self.ang_vel = np.array(response["ang_vel"])
@@ -301,10 +322,10 @@ class WalkingRobotIKEnv(gym.Env):
         # joint_torque = np.array(response["joint_torque"])
         # joint_positions = np.array(response["joint_positions"])
         # joint_velocities = np.array(response["joint_velocities"])
-        # TODO(toni): CHECK THE DIM of endEffectorPositions (seems to be 2*3 and not 3*6)
         end_effector_positions = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
         # Use finite difference
         velocity = np.array(self.delta_world_position) / self.wanted_dt
+        angular_velocity = (self.current_rot - self.last_rot) / self.wanted_dt
 
         heading_deviation = normalize_angle(self.heading - self.start_heading)
 
@@ -324,11 +345,11 @@ class WalkingRobotIKEnv(gym.Env):
                 end_effector_positions.flatten() / self.max_action,
                 self.current_rot,
                 velocity,
+                angular_velocity,
                 # TODO(toni): add center deviation?
                 # joint_torque,
                 # joint_positions,
                 # joint_velocities,
-                # self.ang_vel,
                 # lin_acc,
                 np.array([heading_deviation]),
                 np.array(input_command)
@@ -362,7 +383,7 @@ class WalkingRobotIKEnv(gym.Env):
             self.current_sleep_time = np.clip(self.current_sleep_time, 0.0, self.wanted_dt)
         else:
             # First step: the dt would be zero
-            self._first_step = True
+            self._first_step = False
 
         if self.verbose > 1:
             print(f"{1 / dt:.2f}Hz")
