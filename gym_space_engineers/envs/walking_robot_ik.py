@@ -172,6 +172,16 @@ class WalkingRobotIKEnv(gym.Env):
             dtype=np.float32,
         )
 
+        if self.symmetric_control:
+            # Half the size
+            self.action_space = spaces.Box(
+                low=-1.0,
+                high=1.0,
+                shape=(len(self.action_upper_limits) // 2,),
+                dtype=np.float32,
+            )
+
+
         # Weights for the different reward terms
         # self.weight_continuity = weight_continuity
         self.weight_center_deviation = weight_center_deviation
@@ -212,6 +222,10 @@ class WalkingRobotIKEnv(gym.Env):
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
         if self.id is None:
             raise Exception("Please call reset() before step()")
+
+        if self.symmetric_control and len(action) < self.num_dim_per_leg * self.number_of_legs:
+            # Extend to match the required action dim
+            action = np.array([action, action]).flatten()
 
         # The agent outputs a scaled action in [-1, 1]
         scaled_action = action.copy()
@@ -322,6 +336,7 @@ class WalkingRobotIKEnv(gym.Env):
         velocity = np.array(self.delta_world_position) / self.wanted_dt
         angular_velocity = (self.current_rot - self.last_rot) / self.wanted_dt
 
+        # if turning task: heading - target_heading, for forward, target_heading = start_heading
         heading_deviation = normalize_angle(self.heading - self.start_heading)
 
         # Append input command, one for forward/backward
