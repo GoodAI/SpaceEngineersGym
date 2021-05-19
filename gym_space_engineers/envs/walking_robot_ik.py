@@ -41,6 +41,11 @@ class WalkingRobotIKEnv(gym.Env):
     :param desired_linear_speed: desired forward/backward speed in m/s
     :param desired_angular_speed: desired angular (left/right) speed in deg/s
     :param task: current task id, one of "forward", "backward", "turn_left", "turn_right"
+    :param initial_wait_period: Time to wait for the initial reset in second
+    :param symmetric_control: Reduces the search space by using symmetries
+        (dependent on the task)
+    :param allowed_leg_angle: Angle allowed around the starting position,
+        this limits the action space
     :param verbose: control verbosity of the output (useful for debug)
     """
 
@@ -59,7 +64,6 @@ class WalkingRobotIKEnv(gym.Env):
         desired_angular_speed: float = 30.0,
         task: str = "forward",
         initial_wait_period: float = 1.0,
-        limited_control: bool = False,
         symmetric_control: bool = False,
         allowed_leg_angle: float = 10.0,
         verbose: int = 1,
@@ -78,12 +82,9 @@ class WalkingRobotIKEnv(gym.Env):
         self._first_step = True
 
         self.initial_wait_period = initial_wait_period
-        self.limited_control = limited_control
         self.symmetric_control = symmetric_control
 
-        # TODO: contact indicator
-        # reduce speed for other legs (curriculum)
-        # reduce action space even more
+        # TODO: contact indicator / torque ?
 
         # For now, this is hardcoded for the 6-legged robot
         self.number_of_legs = 6
@@ -137,7 +138,6 @@ class WalkingRobotIKEnv(gym.Env):
 
         # We assume symmetric shape (similar legs)
         x_init = abs(response["endEffectorPositions"][0]["x"])
-        z_init = abs(response["endEffectorPositions"][0]["z"])
 
         # Limit Y axis to be at most y_max (not above the shoulder)
         self.action_upper_limits[1 :: self.num_dim_per_leg] = 0.0
@@ -217,11 +217,6 @@ class WalkingRobotIKEnv(gym.Env):
         scaled_action = action.copy()
         # Unscale to real action
         action = self.unscale_action(action)
-
-        if self.limited_control:
-            # Zero speed for all legs but the two front ones
-            # action[[3, 7, 15, 19]] = 0.0
-            action[[7, 11, 19, 23]] = 0.0
 
         if self.symmetric_control:
             # Only use the first half and then use the symmetric
