@@ -3,6 +3,7 @@ import os
 from threading import Thread
 
 import gym
+import pytest
 import zmq
 from stable_baselines3.common.env_checker import check_env
 
@@ -81,10 +82,12 @@ class FakeServer(object):
             socket.send(response_message.encode("UTF-8"))
 
 
-def test_gym_env():
+# @pytest.mark.parametrize("kwargs", [{}, {"symmetric_control": True}, {"task": "turn_left"}])
+@pytest.mark.parametrize("kwargs", [{}])
+def test_gym_env(kwargs):
     server = FakeServer()
     server.start()
-    env = gym.make("SpaceEngineers-WalkingRobot-IK-v0", detach=True, verbose=2)
+    env = gym.make("SpaceEngineers-WalkingRobot-IK-v0", detach=True, verbose=2, **kwargs)
 
     check_env(env, warn=True)
 

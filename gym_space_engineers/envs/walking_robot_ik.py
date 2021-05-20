@@ -56,6 +56,7 @@ class WalkingRobotIKEnv(gym.Env):
         weight_center_deviation: float = 1,
         weight_distance_traveled: float = 5,
         weight_heading_deviation: float = 1,
+        weight_turning_angle: float = 5,
         control_frequency: float = 20.0,
         max_action: float = 5.0,
         max_speed: float = 10.0,
@@ -92,6 +93,8 @@ class WalkingRobotIKEnv(gym.Env):
 
         self.desired_linear_speed = desired_linear_speed
         self.desired_angular_speed = np.deg2rad(desired_angular_speed)
+        # Desired delta in angle (in rad)
+        self.desired_angle_delta = self.desired_angular_speed * self.wanted_dt
 
         try:
             self.task = Task(task)
@@ -181,12 +184,12 @@ class WalkingRobotIKEnv(gym.Env):
                 dtype=np.float32,
             )
 
-
         # Weights for the different reward terms
         # self.weight_continuity = weight_continuity
         self.weight_center_deviation = weight_center_deviation
         self.weight_distance_traveled = weight_distance_traveled
         self.weight_heading_deviation = weight_heading_deviation
+        self.weight_turning_angle = weight_turning_angle
         self.threshold_center_deviation = threshold_center_deviation
 
         # Early termination condition and costs
@@ -207,6 +210,8 @@ class WalkingRobotIKEnv(gym.Env):
         # holds all the necessary information
         self.heading = 0  # heading in radians
         self.start_heading = 0
+        self.target_heading = 0.0  # when turning
+        self.last_heading = 0.0
         self.current_rot = np.zeros(3)
         self.last_rot = np.zeros(3)
 
@@ -223,7 +228,7 @@ class WalkingRobotIKEnv(gym.Env):
         if self.id is None:
             raise Exception("Please call reset() before step()")
 
-        if self.symmetric_control and len(action) < self.num_dim_per_leg * self.number_of_legs:
+        if self.symmetric_control:
             # Extend to match the required action dim
             action = np.array([action, action]).flatten()
 
@@ -300,6 +305,7 @@ class WalkingRobotIKEnv(gym.Env):
         self._update_robot_pose(response)
         self.old_world_position = Point3D(np.zeros(3))
         self._reset_transform()
+
         return self._get_observation(response)
 
     def _update_robot_pose(self, response: Dict[str, Any]) -> None:
@@ -313,6 +319,7 @@ class WalkingRobotIKEnv(gym.Env):
         self.last_rot = self.current_rot.copy()
         self.current_rot = rot_mat.as_euler("xyz", degrees=False)
         self.heading = normalize_angle(self.current_rot[2])  # extract yaw
+        self.last_heading = normalize_angle(self.last_rot[2])
         # self.ang_vel = np.array(response["ang_vel"])
         self.robot_position = Point3D(position)
 
@@ -321,6 +328,9 @@ class WalkingRobotIKEnv(gym.Env):
         self._update_robot_pose(response)
         self._update_world_position()
         self._update_control_frequency()
+        # Update target heading
+        # TODO: change sign depending on turn left/right
+        self.target_heading = normalize_angle(self.heading + self.desired_angle_delta)
 
         observation = self._extract_observation(response)
 
@@ -336,8 +346,10 @@ class WalkingRobotIKEnv(gym.Env):
         velocity = np.array(self.delta_world_position) / self.wanted_dt
         angular_velocity = (self.current_rot - self.last_rot) / self.wanted_dt
 
-        # if turning task: heading - target_heading, for forward, target_heading = start_heading
-        heading_deviation = normalize_angle(self.heading - self.start_heading)
+        if self.task in [Task.FORWARD, Task.BACKWARD]:
+            heading_deviation = normalize_angle(self.heading - self.start_heading)
+        elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
+            heading_deviation = normalize_angle(self.heading - self.target_heading)
 
         # Append input command, one for forward/backward
         # one for turn left/right
@@ -490,6 +502,60 @@ class WalkingRobotIKEnv(gym.Env):
 
     def _compute_reward(self, scaled_action: np.ndarray, done: bool) -> float:
 
+        if self.task in [Task.FORWARD, Task.BACKWARD]:
+            reward = self._compute_walking_reward(scaled_action, done)
+        elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
+            reward = self._compute_turning_reward(scaled_action, done)
+        return reward
+
+    def _compute_turning_reward(self, scaled_action: np.ndarray, done: bool) -> float:
+        deviation_cost = self.weight_center_deviation * self._xy_deviation_cost()
+        # angular_velocity_cost = self.weight_angular_velocity * self._masked_angular_velocity_cost()
+        # continuity_cost = self.weight_continuity * self._continuity_cost(scaled_action)
+        continuity_cost = 0.0
+
+        # use delta in orientation as primary reward
+        # the sign of the desired delta make the robot rotate clockwise or anti-clockwise
+        delta_heading_rad = normalize_angle(self.heading - self.last_heading)
+        delta_heading = np.rad2deg(delta_heading_rad)
+
+        angular_speed_cost = (delta_heading_rad - self.desired_angle_delta) ** 2 / self.desired_angle_delta ** 2
+        angular_speed_cost = 0.0 * self.weight_turning_angle * angular_speed_cost
+
+        turning_reward = delta_heading * self.weight_turning_angle
+
+        # if self.verbose > 1:
+        #     print(f"Turning Reward: {turning_reward:.5f}", f"Continuity Cost: {continuity_cost:5f}")
+        #     print(f"Deviation cost: {deviation_cost:.5f}")
+        #     print(f"Angular velocity cost: {angular_velocity_cost:.5f}")
+
+        # Do not reward agent if it has terminated due to fall/crawling/...
+        # to avoid encouraging aggressive behavior
+        if done:
+            turning_reward = 0.0
+
+        reward = -(deviation_cost + angular_speed_cost + continuity_cost) + turning_reward
+
+        if done:
+            # give negative reward
+            reward -= self.early_termination_penalty
+        return reward
+
+    def _xy_deviation_cost(self) -> float:
+        """
+        Cost for deviating from the center of the treadmill (y = 0)
+        :return: normalized squared value for deviation from a straight line
+        """
+        # TODO: tune threshold_center_deviation
+        # Note: it is used a bit differently for walking/turning
+        # maybe better to have two variables
+        deviation = self._rotation_center_deviation() / self.threshold_center_deviation
+        return deviation ** 2
+
+    def _rotation_center_deviation(self) -> float:
+        return np.sqrt(self.world_position.x ** 2 + self.world_position.y ** 2)
+
+    def _compute_walking_reward(self, scaled_action: np.ndarray, done: bool) -> float:
         # TODO(toni): update reward for turn left/right tasks
         deviation_cost = self.weight_center_deviation * self._center_deviation_cost()
 
@@ -513,6 +579,11 @@ class WalkingRobotIKEnv(gym.Env):
 
         # use delta in y direction as distance that was travelled
         # linear_speed_cost = self.delta_world_position.y * self.weight_distance_traveled
+
+        # Do not reward agent if it has terminated due to fall/crawling/...
+        # to avoid encouraging aggressive behavior
+        if done:
+            distance_traveled = 0.0
 
         if self.verbose > 1:
             # f"Continuity Cost: {continuity_cost:5f}
