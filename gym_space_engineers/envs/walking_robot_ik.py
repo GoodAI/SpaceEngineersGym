@@ -648,12 +648,17 @@ class WalkingRobotIKEnv(gym.Env):
         """
         :return: True if the robot is in a terminal state (episode should end)
         """
-        has_fallen = self.has_fallen()
-        is_centered = math.fabs(self.world_position.x) < self.threshold_center_deviation
         # Deactivate crawling detection for sim
         # is_crawling = self.is_crawling()
         is_crawling = False
-        _, is_headed = self._heading_cost()
+        has_fallen = self.has_fallen()
+        if self.task in [Task.FORWARD, Task.BACKWARD]:
+            is_centered = math.fabs(self.world_position.x) < self.threshold_center_deviation
+            _, is_headed = self._heading_cost()
+        elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
+            is_centered = self._rotation_center_deviation() < self.threshold_center_deviation
+            is_headed = True
+
         return has_fallen or not is_centered or not is_headed or is_crawling
 
 
