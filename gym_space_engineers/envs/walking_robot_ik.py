@@ -242,10 +242,20 @@ class WalkingRobotIKEnv(gym.Env):
             # TODO(toni): try to tell the agent the correct action space dim
             # Opposite x direction
             action[self.action_dim // 2 :: self.num_dim_per_leg] = -action[0 : self.action_dim // 2 : self.num_dim_per_leg]
-            # Same y,z,speed
+            # Same y and speed
             action[self.action_dim // 2 + 1 :: self.num_dim_per_leg] = action[1 : self.action_dim // 2 : self.num_dim_per_leg]
-            action[self.action_dim // 2 + 2 :: self.num_dim_per_leg] = action[2 : self.action_dim // 2 : self.num_dim_per_leg]
             action[self.action_dim // 2 + 3 :: self.num_dim_per_leg] = action[3 : self.action_dim // 2 : self.num_dim_per_leg]
+            if self.task in [Task.FORWARD, Task.BACKWARD]:
+                # Same z
+                action[self.action_dim // 2 + 2 :: self.num_dim_per_leg] = action[
+                    2 : self.action_dim // 2 : self.num_dim_per_leg
+                ]
+            elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
+                # Opposite z
+                # TODO: double check, does not seem right
+                action[self.action_dim // 2 + 2 :: self.num_dim_per_leg] = -action[
+                    2 : self.action_dim // 2 : self.num_dim_per_leg
+                ]
 
         commands = {}
         leg_ids = ["l1", "l2", "l3", "r1", "r2", "r3"]
