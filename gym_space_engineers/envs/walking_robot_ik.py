@@ -81,6 +81,7 @@ class WalkingRobotIKEnv(gym.Env):
         self.max_dt = 2.0  # in s
         self.last_time = time.time()
         self._first_step = True
+        self.dt = 0.0
 
         self.initial_wait_period = initial_wait_period
         self.symmetric_control = symmetric_control
@@ -232,14 +233,8 @@ class WalkingRobotIKEnv(gym.Env):
             # Extend to match the required action dim
             action = np.array([action, action]).flatten()
 
-        # The agent outputs a scaled action in [-1, 1]
-        scaled_action = action.copy()
-        # Unscale to real action
-        action = self.unscale_action(action)
-
-        if self.symmetric_control:
+            # TODO: check that using the normalized action works
             # Only use the first half and then use the symmetric
-            # TODO(toni): try to tell the agent the correct action space dim
             # Opposite x direction
             action[self.action_dim // 2 :: self.num_dim_per_leg] = -action[0 : self.action_dim // 2 : self.num_dim_per_leg]
             # Same y and speed
@@ -252,10 +247,14 @@ class WalkingRobotIKEnv(gym.Env):
                 ]
             elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
                 # Opposite z
-                # TODO: double check, does not seem right
                 action[self.action_dim // 2 + 2 :: self.num_dim_per_leg] = -action[
                     2 : self.action_dim // 2 : self.num_dim_per_leg
                 ]
+
+        # The agent outputs a scaled action in [-1, 1]
+        scaled_action = action.copy()
+        # Unscale to real action
+        action = self.unscale_action(action)
 
         commands = {}
         leg_ids = ["l1", "l2", "l3", "r1", "r2", "r3"]
@@ -337,10 +336,13 @@ class WalkingRobotIKEnv(gym.Env):
         # Extract response from server
         self._update_robot_pose(response)
         self._update_world_position()
-        self._update_control_frequency()
+        self.dt = self._update_control_frequency()
         # Update target heading
-        # TODO: change sign depending on turn left/right
-        self.target_heading = normalize_angle(self.heading + self.desired_angle_delta)
+        desired_delta = self.desired_angle_delta
+        if self.task == Task.TURN_RIGHT:
+            desired_delta *= -1
+
+        self.target_heading = normalize_angle(self.heading + desired_delta)
 
         observation = self._extract_observation(response)
 
@@ -359,6 +361,7 @@ class WalkingRobotIKEnv(gym.Env):
         if self.task in [Task.FORWARD, Task.BACKWARD]:
             heading_deviation = normalize_angle(self.heading - self.start_heading)
         elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
+            # Note: this is only needed in the case of precise turning
             heading_deviation = normalize_angle(self.heading - self.target_heading)
 
         # Append input command, one for forward/backward
@@ -374,6 +377,7 @@ class WalkingRobotIKEnv(gym.Env):
         observation = np.concatenate(
             (
                 # TODO(toni): check normalization
+                # TODO: check z definition (absolute or relative)
                 end_effector_positions.flatten() / self.max_action,
                 self.current_rot,
                 velocity,
@@ -529,10 +533,16 @@ class WalkingRobotIKEnv(gym.Env):
         delta_heading_rad = normalize_angle(self.heading - self.last_heading)
         delta_heading = np.rad2deg(delta_heading_rad)
 
-        angular_speed_cost = (delta_heading_rad - self.desired_angle_delta) ** 2 / self.desired_angle_delta ** 2
+        desired_delta = self.desired_angle_delta
+        if self.task == Task.TURN_RIGHT:
+            desired_delta *= -1
+
+        angular_speed_cost = (delta_heading_rad - desired_delta) ** 2 / self.desired_angle_delta ** 2
         angular_speed_cost = 0.0 * self.weight_turning_angle * angular_speed_cost
 
         turning_reward = delta_heading * self.weight_turning_angle
+        if self.task == Task.TURN_RIGHT:
+            turning_reward *= -1
 
         # if self.verbose > 1:
         #     print(f"Turning Reward: {turning_reward:.5f}", f"Continuity Cost: {continuity_cost:5f}")
