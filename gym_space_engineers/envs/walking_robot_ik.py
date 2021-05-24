@@ -233,9 +233,14 @@ class WalkingRobotIKEnv(gym.Env):
             # Extend to match the required action dim
             action = np.array([action, action]).flatten()
 
-            # TODO: check that using the normalized action works
-            # Only use the first half and then use the symmetric
-            # Opposite x direction
+        # The agent outputs a scaled action in [-1, 1]
+        scaled_action = action.copy()
+        # Unscale to real action
+        action = self.unscale_action(action)
+
+        if self.symmetric_control:
+            # Note: the symmetric control on scaled actions does not seem to work as well
+            # (bias towards going backward)
             action[self.action_dim // 2 :: self.num_dim_per_leg] = -action[0 : self.action_dim // 2 : self.num_dim_per_leg]
             # Same y and speed
             action[self.action_dim // 2 + 1 :: self.num_dim_per_leg] = action[1 : self.action_dim // 2 : self.num_dim_per_leg]
@@ -247,14 +252,10 @@ class WalkingRobotIKEnv(gym.Env):
                 ]
             elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
                 # Opposite z
+                # Note: symmetric action on scaled action seems to work better for turning
                 action[self.action_dim // 2 + 2 :: self.num_dim_per_leg] = -action[
                     2 : self.action_dim // 2 : self.num_dim_per_leg
                 ]
-
-        # The agent outputs a scaled action in [-1, 1]
-        scaled_action = action.copy()
-        # Unscale to real action
-        action = self.unscale_action(action)
 
         commands = {}
         leg_ids = ["l1", "l2", "l3", "r1", "r2", "r3"]
@@ -388,8 +389,8 @@ class WalkingRobotIKEnv(gym.Env):
                 # joint_velocities,
                 # lin_acc,
                 np.array([heading_deviation]),
+                # np.array([heading_deviation, self.dt]),
                 np.array(input_command)
-                # np.array([heading_deviation, dt]),
             )
         )
         return observation
@@ -602,8 +603,8 @@ class WalkingRobotIKEnv(gym.Env):
 
         # Do not reward agent if it has terminated due to fall/crawling/...
         # to avoid encouraging aggressive behavior
-        if done:
-            distance_traveled = 0.0
+        # if done:
+        #     distance_traveled = 0.0
 
         if self.verbose > 1:
             # f"Continuity Cost: {continuity_cost:5f}
