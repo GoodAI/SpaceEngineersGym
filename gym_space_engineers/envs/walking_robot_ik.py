@@ -26,6 +26,11 @@ class Task(Enum):
     TURN_RIGHT = "turn_right"
 
 
+class SymmetryType(Enum):
+    LEFT_RIGHT = "left_right"
+    PER_LEG = "per_leg"
+
+
 class WalkingRobotIKEnv(gym.Env):
     """
     Gym interface to learn to walk.
@@ -46,6 +51,10 @@ class WalkingRobotIKEnv(gym.Env):
         (dependent on the task)
     :param allowed_leg_angle: Angle allowed around the starting position,
         this limits the action space
+    :param symmetry_type: Type of symmetry to use.
+        - "left_right": mirror right legs movements according to left leg movements
+        - "per_leg": "triangle" symmetry, only control two legs
+            and then mirror or copy for the rest
     :param verbose: control verbosity of the output (useful for debug)
     """
 
@@ -67,6 +76,7 @@ class WalkingRobotIKEnv(gym.Env):
         initial_wait_period: float = 1.0,
         symmetric_control: bool = False,
         allowed_leg_angle: float = 10.0,
+        symmetry_type: str = "left_right",
         verbose: int = 1,
     ):
         self.detach = detach
@@ -85,6 +95,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         self.initial_wait_period = initial_wait_period
         self.symmetric_control = symmetric_control
+        self.symmetry_type = SymmetryType(symmetry_type)
 
         # TODO: contact indicator / torque ?
 
@@ -177,13 +188,22 @@ class WalkingRobotIKEnv(gym.Env):
         )
 
         if self.symmetric_control:
-            # Half the size
-            self.action_space = spaces.Box(
-                low=-1.0,
-                high=1.0,
-                shape=(len(self.action_upper_limits) // 2,),
-                dtype=np.float32,
-            )
+            if self.symmetry_type == SymmetryType.LEFT_RIGHT:
+                # Half the size
+                self.action_space = spaces.Box(
+                    low=-1.0,
+                    high=1.0,
+                    shape=(len(self.action_upper_limits) // 2,),
+                    dtype=np.float32,
+                )
+            else:
+                # Control only two legs
+                self.action_space = spaces.Box(
+                    low=-1.0,
+                    high=1.0,
+                    shape=(2 * self.num_dim_per_leg,),
+                    dtype=np.float32,
+                )
 
         # Weights for the different reward terms
         # self.weight_continuity = weight_continuity
@@ -231,31 +251,20 @@ class WalkingRobotIKEnv(gym.Env):
 
         if self.symmetric_control:
             # Extend to match the required action dim
-            action = np.array([action, action]).flatten()
+            n_repeat = (self.number_of_legs * self.num_dim_per_leg) // len(action)
+            action = np.tile(action, n_repeat)
+            # FIXME: remove that when z is the same for all legs
+            if self.symmetry_type == SymmetryType.PER_LEG:
+                action = self.apply_symmetry(action)
+
 
         # The agent outputs a scaled action in [-1, 1]
         scaled_action = action.copy()
         # Unscale to real action
         action = self.unscale_action(action)
 
-        if self.symmetric_control:
-            # Note: the symmetric control on scaled actions does not seem to work as well
-            # (bias towards going backward)
-            action[self.action_dim // 2 :: self.num_dim_per_leg] = -action[0 : self.action_dim // 2 : self.num_dim_per_leg]
-            # Same y and speed
-            action[self.action_dim // 2 + 1 :: self.num_dim_per_leg] = action[1 : self.action_dim // 2 : self.num_dim_per_leg]
-            action[self.action_dim // 2 + 3 :: self.num_dim_per_leg] = action[3 : self.action_dim // 2 : self.num_dim_per_leg]
-            if self.task in [Task.FORWARD, Task.BACKWARD]:
-                # Same z
-                action[self.action_dim // 2 + 2 :: self.num_dim_per_leg] = action[
-                    2 : self.action_dim // 2 : self.num_dim_per_leg
-                ]
-            elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
-                # Opposite z
-                # Note: symmetric action on scaled action seems to work better for turning
-                action[self.action_dim // 2 + 2 :: self.num_dim_per_leg] = -action[
-                    2 : self.action_dim // 2 : self.num_dim_per_leg
-                ]
+        if self.symmetric_control and self.symmetry_type == SymmetryType.LEFT_RIGHT:
+            action = self.apply_symmetry(action)
 
         commands = {}
         leg_ids = ["l1", "l2", "l3", "r1", "r2", "r3"]
@@ -295,6 +304,48 @@ class WalkingRobotIKEnv(gym.Env):
         info.update(self._additional_infos())
 
         return observation, reward, done, info
+
+    def apply_symmetry(self, action: np.ndarray) -> np.ndarray:
+        right_start_idx = self.action_dim // 2
+
+        if self.symmetry_type == SymmetryType.LEFT_RIGHT:
+            # Note: the symmetric control on scaled actions does not seem to work as well
+            # (bias towards going backward)
+            action[right_start_idx :: self.num_dim_per_leg] = -action[0 : right_start_idx : self.num_dim_per_leg]
+            # Same y and speed
+            action[right_start_idx + 1 :: self.num_dim_per_leg] = action[1 : right_start_idx : self.num_dim_per_leg]
+            action[right_start_idx + 3 :: self.num_dim_per_leg] = action[3 : right_start_idx : self.num_dim_per_leg]
+            if self.task in [Task.FORWARD, Task.BACKWARD]:
+                # Same z
+                action[right_start_idx + 2 :: self.num_dim_per_leg] = action[2 : right_start_idx : self.num_dim_per_leg]
+            elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
+                # Opposite z
+                # Note: symmetric action on scaled action seems to work better for turning
+                action[right_start_idx + 2 :: self.num_dim_per_leg] = -action[2 : right_start_idx : self.num_dim_per_leg]
+        else:
+            first_leg = action[: self.num_dim_per_leg]
+            second_leg = action[self.num_dim_per_leg : 2 * self.num_dim_per_leg]
+            second_leg[0] = - 1
+            # Indices for each leg
+            start_indices = np.arange(self.number_of_legs * self.num_dim_per_leg, step=self.num_dim_per_leg)
+            # Copy for the same side
+            start_idx_1 = start_indices[::2]
+            for i in range(self.num_dim_per_leg):
+                action[start_idx_1 + i] = first_leg[i]
+
+            # Opposite x for opposite side
+            indices = start_idx_1[start_idx_1 >= right_start_idx]
+            action[indices] = -action[indices]
+
+            start_idx_2 = start_indices[1::2]
+            for i in range(self.num_dim_per_leg):
+                action[start_idx_2 + i] = second_leg[i]
+
+            # Opposite x for opposite side
+            indices = start_idx_2[start_idx_2 < right_start_idx]
+            action[indices] = -action[indices]
+
+        return action
 
     def reset(self) -> np.ndarray:
         # Reset values for controlling frequency
@@ -390,7 +441,7 @@ class WalkingRobotIKEnv(gym.Env):
                 # lin_acc,
                 np.array([heading_deviation]),
                 # np.array([heading_deviation, self.dt]),
-                np.array(input_command)
+                np.array(input_command),
             )
         )
         return observation

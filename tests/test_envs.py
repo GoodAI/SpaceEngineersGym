@@ -83,6 +83,7 @@ class FakeServer(object):
 
 
 # @pytest.mark.parametrize("kwargs", [{}, {"symmetric_control": True}, {"task": "turn_left"}])
+# @pytest.mark.parametrize("kwargs", [{"symmetric_control": True, "symmetry_type": "per_leg"}])
 @pytest.mark.parametrize("kwargs", [{}])
 def test_gym_env(kwargs):
     server = FakeServer()
