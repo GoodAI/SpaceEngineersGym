@@ -603,8 +603,8 @@ class WalkingRobotIKEnv(gym.Env):
 
         # Do not reward agent if it has terminated due to fall/crawling/...
         # to avoid encouraging aggressive behavior
-        # if done:
-        #     distance_traveled = 0.0
+        if done:
+            distance_traveled = 0.0
 
         if self.verbose > 1:
             # f"Continuity Cost: {continuity_cost:5f}
