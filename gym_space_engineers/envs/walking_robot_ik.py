@@ -251,11 +251,13 @@ class WalkingRobotIKEnv(gym.Env):
 
         if self.symmetric_control:
             # Extend to match the required action dim
-            n_repeat = (self.number_of_legs * self.num_dim_per_leg) // len(action)
-            action = np.tile(action, n_repeat)
-            # FIXME: remove that when z is the same for all legs
             if self.symmetry_type == SymmetryType.PER_LEG:
+                n_repeat = (self.number_of_legs * self.num_dim_per_leg) // len(action)
+                action = np.tile(action, n_repeat)
+                # FIXME: remove that when z is the same for all legs
                 action = self.apply_symmetry(action)
+            else:
+                action = np.array([action, action]).flatten()
 
 
         # The agent outputs a scaled action in [-1, 1]
