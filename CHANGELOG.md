@@ -1,5 +1,6 @@
 # Release 0.0.3
 - Added turning task
+- Added new type of symmetry "per_leg" (only control two legs and then copy/mirror)
 
 # Release 0.0.2
 
