@@ -154,10 +154,10 @@ class WalkingRobotIKEnv(gym.Env):
         # We assume symmetric shape (similar legs)
         x_init = abs(response["endEffectorPositions"][0]["x"])
 
-        # Limit Y axis to be at most y_max (not above the shoulder)
-        self.action_upper_limits[1 :: self.num_dim_per_leg] = 0.0
+        # Limit Y axis to be at most y_max
+        # TODO(toni): try with - y_init / 2 instead of 0.0 (not above the shoulder)
+        self.action_upper_limits[1 :: self.num_dim_per_leg] = -y_init / 2
         # Limit Y axis to be at least above initial pos
-        # TODO(toni): double check
         self.action_lower_limits[1 :: self.num_dim_per_leg] = -y_init
 
         # Limit Left legs x axis
