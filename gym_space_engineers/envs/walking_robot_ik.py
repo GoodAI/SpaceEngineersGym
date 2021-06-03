@@ -2,6 +2,7 @@ import json
 import math
 import os
 import time
+import random
 from enum import Enum
 from typing import Any, Dict, Tuple
 
@@ -66,7 +67,7 @@ class WalkingRobotIKEnv(gym.Env):
         weight_distance_traveled: float = 5,
         weight_heading_deviation: float = 1,
         weight_turning_angle: float = 5,
-        control_frequency: float = 20.0,
+        control_frequency: float = 10.0,
         max_action: float = 5.0,
         max_speed: float = 10.0,
         limit_control_freq: bool = True,
@@ -75,9 +76,10 @@ class WalkingRobotIKEnv(gym.Env):
         task: str = "forward",
         initial_wait_period: float = 1.0,
         symmetric_control: bool = False,
-        allowed_leg_angle: float = 10.0,
+        allowed_leg_angle: float = 15.0,
         symmetry_type: str = "left_right",
         verbose: int = 1,
+        randomize_task: bool = False,
     ):
         self.detach = detach
         self.id = None  # client id
@@ -108,6 +110,8 @@ class WalkingRobotIKEnv(gym.Env):
         # Desired delta in angle (in rad)
         self.desired_angle_delta = self.desired_angular_speed * self.wanted_dt
 
+        self.randomize_task = randomize_task
+        self.tasks = list(Task)
         try:
             self.task = Task(task)
         except ValueError:
@@ -354,6 +358,10 @@ class WalkingRobotIKEnv(gym.Env):
         self._first_step = True
         self.current_sleep_time = self.wanted_dt
         self.last_time = time.time()
+
+        # Select a task randomly
+        if self.randomize_task:
+            self.task = random.choice(self.tasks)
 
         if self.id is None:
             response = self._send_initial_request()
