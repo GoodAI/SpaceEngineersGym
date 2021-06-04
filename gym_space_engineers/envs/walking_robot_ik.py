@@ -1,8 +1,8 @@
 import json
 import math
 import os
-import time
 import random
+import time
 from enum import Enum
 from typing import Any, Dict, Tuple
 
@@ -57,6 +57,9 @@ class WalkingRobotIKEnv(gym.Env):
         - "per_leg": "triangle" symmetry, only control two legs
             and then mirror or copy for the rest
     :param verbose: control verbosity of the output (useful for debug)
+    :param randomize_task: Whether to randomize the task being solved.
+        For now, only randomize forward/backward or turn left/right,
+        not all four at the same time.
     """
 
     def __init__(
@@ -110,12 +113,17 @@ class WalkingRobotIKEnv(gym.Env):
         # Desired delta in angle (in rad)
         self.desired_angle_delta = self.desired_angular_speed * self.wanted_dt
 
-        self.randomize_task = randomize_task
-        self.tasks = list(Task)
         try:
             self.task = Task(task)
         except ValueError:
             raise ValueError(f"`task` must be one of {list(Task)}, not {task}")
+
+        self.randomize_task = randomize_task
+        # Tasks to randomize
+        if self.task in [Task.FORWARD, Task.BACKWARD]:
+            self.tasks = [Task.FORWARD, Task.BACKWARD]
+        else:
+            self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT]
 
         # Observation space dim
         num_var_per_joint = 0  # position,velocity,torque?
@@ -263,7 +271,6 @@ class WalkingRobotIKEnv(gym.Env):
             else:
                 action = np.array([action, action]).flatten()
 
-
         # The agent outputs a scaled action in [-1, 1]
         scaled_action = action.copy()
         # Unscale to real action
@@ -331,7 +338,7 @@ class WalkingRobotIKEnv(gym.Env):
         else:
             first_leg = action[: self.num_dim_per_leg]
             second_leg = action[self.num_dim_per_leg : 2 * self.num_dim_per_leg]
-            second_leg[0] = - 1
+            second_leg[0] = -1
             # Indices for each leg
             start_indices = np.arange(self.number_of_legs * self.num_dim_per_leg, step=self.num_dim_per_leg)
             # Copy for the same side
