@@ -3,6 +3,7 @@ import math
 import os
 import random
 import time
+from copy import deepcopy
 from enum import Enum
 from typing import Any, Dict, Tuple
 
@@ -17,7 +18,6 @@ from gym_space_engineers.util.util import Point3D, in_relative_frame, normalize_
 SERVER_ADDR = os.environ.get("SE_SERVER_ADDR", "localhost:5560")
 context = zmq.Context()
 socket = context.socket(zmq.REQ)
-socket.connect(f"tcp://{SERVER_ADDR}")
 
 
 class Task(Enum):
@@ -84,6 +84,10 @@ class WalkingRobotIKEnv(gym.Env):
         verbose: int = 1,
         randomize_task: bool = False,
     ):
+        # TODO: replace global with attribute
+        global socket
+        socket.connect(f"tcp://{SERVER_ADDR}")
+
         self.detach = detach
         self.id = None  # client id
 
@@ -256,6 +260,7 @@ class WalkingRobotIKEnv(gym.Env):
         self.translation = Point3D(np.zeros(3))
         # Angular velocity
         self.ang_vel = np.zeros(3)
+        self._last_response = None
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
         if self.id is None:
@@ -292,7 +297,8 @@ class WalkingRobotIKEnv(gym.Env):
                     "y": values[1],
                     "z": values[2],
                 },
-                "speed": values[3],
+                # allow to cap the speed externally to keep current pose
+                "speed": min(values[3], self.max_speed),
             }
 
         request = {
@@ -386,6 +392,16 @@ class WalkingRobotIKEnv(gym.Env):
 
         return self._get_observation(response)
 
+    def change_task(self, task: Task) -> np.ndarray:
+        # The reset transform would break without info about the robot
+        assert self._last_response is not None
+        assert isinstance(task, Task)
+        self.task = task
+        self._update_robot_pose(self._last_response)
+        self.old_world_position = Point3D(np.zeros(3))
+        self._reset_transform()
+        return self._get_observation(self._last_response)
+
     def _update_robot_pose(self, response: Dict[str, Any]) -> None:
         position = self.to_array(response["position"])
         right = self.to_array(response["right"])
@@ -428,6 +444,7 @@ class WalkingRobotIKEnv(gym.Env):
         angular_velocity = (self.current_rot - self.last_rot) / self.wanted_dt
 
         if self.task in [Task.FORWARD, Task.BACKWARD]:
+            # TODO: clip target heading to max heading deviation when using the model?
             heading_deviation = normalize_angle(self.heading - self.start_heading)
         elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
             # Note: this is only needed in the case of precise turning
@@ -443,6 +460,7 @@ class WalkingRobotIKEnv(gym.Env):
             Task.TURN_RIGHT: [0, -1],
         }[self.task]
 
+        # TODO: try adding end effector velocity
         observation = np.concatenate(
             (
                 # TODO(toni): check normalization
@@ -502,12 +520,12 @@ class WalkingRobotIKEnv(gym.Env):
         # Re-arrange to match convention
         return np.array([vector["z"], vector["x"], vector["y"]])
 
-    @staticmethod
-    def _send_request(request: Dict[str, Any]) -> Dict[str, Any]:
+    def _send_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         request_message = json.dumps(request)
         socket.send(request_message.encode("UTF-8"))
         response = json.loads(socket.recv())
-
+        # Cache last response, useful when changing tasks on the fly
+        self._last_response = deepcopy(response)
         return response
 
     def _send_initial_request(self) -> Dict[str, Any]:

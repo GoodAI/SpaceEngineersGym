@@ -21,3 +21,9 @@ register(
     max_episode_steps=400,  # around 40s of interaction
     kwargs={"control_frequency": 10},  # 10Hz
 )
+# Timeout
+register(
+    id="SpaceEngineers-WalkingRobot-IK-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    kwargs={"control_frequency": 10},  # 10Hz
+)

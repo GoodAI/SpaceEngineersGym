@@ -2,6 +2,8 @@
 - Added turning task
 - Added new type of symmetry "per_leg" (only control two legs and then copy/mirror)
 - Reduce y_max in the action space
+- Added `v1` env without timeout
+- Added `change_task()` method
 
 # Release 0.0.2
 
