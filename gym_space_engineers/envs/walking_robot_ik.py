@@ -79,6 +79,7 @@ class WalkingRobotIKEnv(gym.Env):
         symmetry_type: str = "left_right",
         verbose: int = 1,
         randomize_task: bool = False,
+        add_end_effector_velocity: bool = False,
     ):
         context = zmq.Context()
         self.socket = context.socket(zmq.REQ)
@@ -114,6 +115,7 @@ class WalkingRobotIKEnv(gym.Env):
         self.desired_angular_speed = np.deg2rad(desired_angular_speed)
         # Desired delta in angle (in rad)
         self.desired_angle_delta = self.desired_angular_speed * self.wanted_dt
+        self.add_end_effector_velocity = add_end_effector_velocity
 
         try:
             self.task = Task(task)
@@ -137,6 +139,9 @@ class WalkingRobotIKEnv(gym.Env):
         dim_command = 2  # forward/backward + left/right
         dim_additional = dim_heading + dim_end_effector + dim_command
 
+        if add_end_effector_velocity:
+            dim_additional += dim_end_effector
+
         self.input_dimension = dim_joints + dim_velocity + dim_current_rotation + dim_additional
 
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.input_dimension,))
@@ -159,6 +164,8 @@ class WalkingRobotIKEnv(gym.Env):
 
         # Get leg length by sending initial request
         response = self._send_initial_request()
+        # Initialize variables
+        self.last_end_effector_pos = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
         # Approximate leg length
         y_init = leg_length = abs(response["endEffectorPositions"][0]["y"])
         allowed_angle = np.deg2rad(allowed_leg_angle)
@@ -440,6 +447,8 @@ class WalkingRobotIKEnv(gym.Env):
         # Use finite difference
         velocity = np.array(self.delta_world_position) / self.wanted_dt
         angular_velocity = (self.current_rot - self.last_rot) / self.wanted_dt
+        end_effector_velocity = (end_effector_positions - self.last_end_effector_pos) / self.wanted_dt
+        self.last_end_effector_pos = end_effector_positions.copy()
 
         if self.task in [Task.FORWARD, Task.BACKWARD]:
             # TODO: clip target heading to max heading deviation when using the model?
@@ -458,12 +467,17 @@ class WalkingRobotIKEnv(gym.Env):
             Task.TURN_RIGHT: [0, -1],
         }[self.task]
 
-        # TODO: try adding end effector velocity
+        if self.add_end_effector_velocity:
+            end_effector_velocity = end_effector_velocity.flatten()
+        else:
+            end_effector_velocity = np.array([])
+
         observation = np.concatenate(
             (
                 # TODO(toni): check normalization
                 # TODO: check z definition (absolute or relative)
                 end_effector_positions.flatten() / self.max_action,
+                end_effector_velocity,
                 self.current_rot,
                 velocity,
                 angular_velocity,

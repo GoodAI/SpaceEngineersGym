@@ -92,7 +92,9 @@ class FakeServer(object):
         {},
         {"symmetric_control": True},
         {"task": "turn_left"},
+        {"task": "turn_left", "randomize_task": True},
         {"symmetric_control": True, "symmetry_type": "per_leg"},
+        {"add_end_effector_velocity": True},
     ],
 )
 def test_gym_env(kwargs):
