@@ -20,9 +20,11 @@ class FakeServer(object):
         self.thread = Thread(target=self.run, daemon=True)
         self.n_legs = 6
         self.step = 0
+        self.started = False
 
     def start(self):
         self.thread.start()
+        self.started = True
 
     def run(self):
         context = zmq.Context()
@@ -81,10 +83,18 @@ class FakeServer(object):
             # print(f"Sent {response_message}")
             socket.send(response_message.encode("UTF-8"))
 
+        socket.close()
 
-# @pytest.mark.parametrize("kwargs", [{}, {"symmetric_control": True}, {"task": "turn_left"}])
-# @pytest.mark.parametrize("kwargs", [{"symmetric_control": True, "symmetry_type": "per_leg"}])
-@pytest.mark.parametrize("kwargs", [{}])
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"symmetric_control": True},
+        {"task": "turn_left"},
+        {"symmetric_control": True, "symmetry_type": "per_leg"},
+    ],
+)
 def test_gym_env(kwargs):
     server = FakeServer()
     server.start()

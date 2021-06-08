@@ -15,10 +15,6 @@ from scipy.spatial.transform import Rotation as R
 
 from gym_space_engineers.util.util import Point3D, in_relative_frame, normalize_angle
 
-SERVER_ADDR = os.environ.get("SE_SERVER_ADDR", "localhost:5560")
-context = zmq.Context()
-socket = context.socket(zmq.REQ)
-
 
 class Task(Enum):
     FORWARD = "forward"
@@ -84,9 +80,11 @@ class WalkingRobotIKEnv(gym.Env):
         verbose: int = 1,
         randomize_task: bool = False,
     ):
-        # TODO: replace global with attribute
-        global socket
-        socket.connect(f"tcp://{SERVER_ADDR}")
+        context = zmq.Context()
+        self.socket = context.socket(zmq.REQ)
+        # Connect to server
+        SERVER_ADDR = os.environ.get("SE_SERVER_ADDR", "localhost:5560")
+        self.socket.connect(f"tcp://{SERVER_ADDR}")
 
         self.detach = detach
         self.id = None  # client id
@@ -522,8 +520,8 @@ class WalkingRobotIKEnv(gym.Env):
 
     def _send_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         request_message = json.dumps(request)
-        socket.send(request_message.encode("UTF-8"))
-        response = json.loads(socket.recv())
+        self.socket.send(request_message.encode("UTF-8"))
+        response = json.loads(self.socket.recv())
         # Cache last response, useful when changing tasks on the fly
         self._last_response = deepcopy(response)
         return response
@@ -552,7 +550,7 @@ class WalkingRobotIKEnv(gym.Env):
             }
             try:
                 self._send_request(request)
-                socket.close()
+                self.socket.close()
             except zmq.error.ZMQError:
                 pass
 
