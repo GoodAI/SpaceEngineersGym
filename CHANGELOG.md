@@ -1,3 +1,6 @@
+# Release 0.0.4
+- Added end effector velocity (with `SE-WalkingSymmetric-v1`)
+
 # Release 0.0.3
 - Added turning task
 - Added new type of symmetry "per_leg" (only control two legs and then copy/mirror)

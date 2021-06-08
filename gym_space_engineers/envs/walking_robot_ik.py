@@ -56,6 +56,7 @@ class WalkingRobotIKEnv(gym.Env):
     :param randomize_task: Whether to randomize the task being solved.
         For now, only randomize forward/backward or turn left/right,
         not all four at the same time.
+    :param add_end_effector_velocity: Add end effector velocity to observation
     """
 
     def __init__(
@@ -70,12 +71,12 @@ class WalkingRobotIKEnv(gym.Env):
         max_action: float = 5.0,
         max_speed: float = 10.0,
         limit_control_freq: bool = True,
-        desired_linear_speed: float = 0.8,
-        desired_angular_speed: float = 30.0,
+        desired_linear_speed: float = 0.8, # in m/s
+        desired_angular_speed: float = 30.0, # in deg/s
         task: str = "forward",
         initial_wait_period: float = 1.0,
         symmetric_control: bool = False,
-        allowed_leg_angle: float = 15.0,
+        allowed_leg_angle: float = 15.0, # in deg
         symmetry_type: str = "left_right",
         verbose: int = 1,
         randomize_task: bool = False,
@@ -251,7 +252,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         # holds all the necessary information
         self.heading = 0  # heading in radians
-        self.start_heading = 0
+        self.start_heading = 0.0
         self.target_heading = 0.0  # when turning
         self.last_heading = 0.0
         self.current_rot = np.zeros(3)

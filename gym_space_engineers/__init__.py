@@ -22,12 +22,13 @@ register(
     kwargs={"control_frequency": 10},  # 10Hz
 )
 register(
-    id="SE-WalkingSymmetric-IK-v0",
+    id="SE-WalkingSymmetric-v1",
     entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
     max_episode_steps=200,  # around 20s of interaction
     kwargs={
         "control_frequency": 10,  # 10Hz
         "symmetric_control": True,
+        "add_end_effector_velocity": True,
     },
 )
 # No Timeout
