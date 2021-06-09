@@ -73,12 +73,12 @@ class WalkingRobotIKEnv(gym.Env):
         max_action: float = 5.0,
         max_speed: float = 10.0,
         limit_control_freq: bool = True,
-        desired_linear_speed: float = 3.0, # in m/s (slow: 1 m/s, fast: 3-4 m/s)
-        desired_angular_speed: float = 30.0, # in deg/s (slow 5 deg/s, fast: 25-30 deg/s)
+        desired_linear_speed: float = 3.0,  # in m/s (slow: 1 m/s, fast: 3-4 m/s)
+        desired_angular_speed: float = 30.0,  # in deg/s (slow 5 deg/s, fast: 25-30 deg/s)
         task: str = "forward",
         initial_wait_period: float = 1.0,
         symmetric_control: bool = False,
-        allowed_leg_angle: float = 15.0, # in deg
+        allowed_leg_angle: float = 15.0,  # in deg
         symmetry_type: str = "left_right",
         verbose: int = 1,
         randomize_task: bool = False,
@@ -179,7 +179,6 @@ class WalkingRobotIKEnv(gym.Env):
         x_init = abs(response["endEffectorPositions"][0]["x"])
 
         # Limit Y axis to be at most y_max
-        # TODO(toni): try with - y_init / 2 instead of 0.0 (not above the shoulder)
         self.action_upper_limits[1 :: self.num_dim_per_leg] = -y_init / 2
         # Limit Y axis to be at least above initial pos
         self.action_lower_limits[1 :: self.num_dim_per_leg] = -y_init
@@ -690,7 +689,6 @@ class WalkingRobotIKEnv(gym.Env):
         return np.sqrt(self.world_position.x ** 2 + self.world_position.y ** 2)
 
     def _compute_walking_reward(self, scaled_action: np.ndarray, done: bool) -> float:
-        # TODO(toni): update reward for turn left/right tasks
         deviation_cost = self.weight_center_deviation * self._center_deviation_cost()
 
         # continuity_cost = self.weight_continuity * self._continuity_cost(scaled_action)
