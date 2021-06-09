@@ -1,5 +1,5 @@
 # Release 0.0.4
-- Added end effector velocity (with `SE-WalkingSymmetric-v1`)
+- Added end effector velocity (with `SE-WalkingSymmetric-v0`)
 
 # Release 0.0.3
 - Added turning task

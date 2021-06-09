@@ -67,12 +67,14 @@ class WalkingRobotIKEnv(gym.Env):
         weight_distance_traveled: float = 5,
         weight_heading_deviation: float = 1,
         weight_turning_angle: float = 5,
+        weight_linear_speed: float = 0.0,
+        weight_angular_speed: float = 0.0,
         control_frequency: float = 10.0,
         max_action: float = 5.0,
         max_speed: float = 10.0,
         limit_control_freq: bool = True,
-        desired_linear_speed: float = 0.8, # in m/s
-        desired_angular_speed: float = 30.0, # in deg/s
+        desired_linear_speed: float = 3.0, # in m/s (slow: 1 m/s, fast: 3-4 m/s)
+        desired_angular_speed: float = 30.0, # in deg/s (slow 5 deg/s, fast: 25-30 deg/s)
         task: str = "forward",
         initial_wait_period: float = 1.0,
         symmetric_control: bool = False,
@@ -233,6 +235,8 @@ class WalkingRobotIKEnv(gym.Env):
         self.weight_distance_traveled = weight_distance_traveled
         self.weight_heading_deviation = weight_heading_deviation
         self.weight_turning_angle = weight_turning_angle
+        self.weight_linear_speed = weight_linear_speed
+        self.weight_angular_speed = weight_angular_speed
         self.threshold_center_deviation = threshold_center_deviation
 
         # Early termination condition and costs
@@ -637,8 +641,18 @@ class WalkingRobotIKEnv(gym.Env):
         if self.task == Task.TURN_RIGHT:
             desired_delta *= -1
 
+        # For debug, to calibrate target speed
+        if self.verbose > 1:
+            current_speed = delta_heading / self.wanted_dt
+            print(f"Angular Speed: {current_speed:.2f} deg/s")
+
         angular_speed_cost = (delta_heading_rad - desired_delta) ** 2 / self.desired_angle_delta ** 2
-        angular_speed_cost = 0.0 * self.weight_turning_angle * angular_speed_cost
+        angular_speed_cost = self.weight_angular_speed * angular_speed_cost
+
+        # Clip to be at most desired_delta
+        if self.weight_angular_speed > 0:
+            desired_delta_deg = np.rad2deg(desired_delta)
+            delta_heading = np.clip(delta_heading, -desired_delta_deg, desired_delta_deg)
 
         turning_reward = delta_heading * self.weight_turning_angle
         if self.task == Task.TURN_RIGHT:
@@ -691,22 +705,28 @@ class WalkingRobotIKEnv(gym.Env):
         if self.task == Task.BACKWARD:
             desired_delta *= -1
 
-        # Disable desired speed for now (DEBUG ON)
+        # For debug, to calibrate target speed
+        if self.verbose > 1:
+            current_speed = self.delta_world_position.y / self.wanted_dt
+            print(f"Speed: {current_speed:.2f} m/s")
+
         linear_speed_cost = (desired_delta - self.delta_world_position.y) ** 2 / desired_delta ** 2
-        linear_speed_cost = 0.0 * self.weight_distance_traveled * linear_speed_cost
+        linear_speed_cost = self.weight_linear_speed * linear_speed_cost
 
-        distance_traveled = self.delta_world_position.y * self.weight_distance_traveled
-
-        if self.task == Task.BACKWARD:
-            distance_traveled *= -1
+        # Clip to be at most desired_delta
+        if self.weight_linear_speed > 0.0:
+            distance_traveled = np.clip(self.delta_world_position.y, -desired_delta, desired_delta)
 
         # use delta in y direction as distance that was travelled
-        # linear_speed_cost = self.delta_world_position.y * self.weight_distance_traveled
+        distance_traveled_reward = distance_traveled * self.weight_distance_traveled
+
+        if self.task == Task.BACKWARD:
+            distance_traveled_reward *= -1
 
         # Do not reward agent if it has terminated due to fall/crawling/...
         # to avoid encouraging aggressive behavior
         if done:
-            distance_traveled = 0.0
+            distance_traveled_reward = 0.0
 
         if self.verbose > 1:
             # f"Continuity Cost: {continuity_cost:5f}
@@ -714,7 +734,7 @@ class WalkingRobotIKEnv(gym.Env):
             print(f"Deviation cost: {deviation_cost}")
             print(f"Heading cost: {heading_cost}")
 
-        reward = distance_traveled + -(deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
+        reward = distance_traveled_reward + -(deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
