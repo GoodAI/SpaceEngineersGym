@@ -711,9 +711,10 @@ class WalkingRobotIKEnv(gym.Env):
         linear_speed_cost = (desired_delta - self.delta_world_position.y) ** 2 / desired_delta ** 2
         linear_speed_cost = self.weight_linear_speed * linear_speed_cost
 
+        distance_traveled = self.delta_world_position.y
         # Clip to be at most desired_delta
         if self.weight_linear_speed > 0.0:
-            distance_traveled = np.clip(self.delta_world_position.y, -desired_delta, desired_delta)
+            distance_traveled = np.clip(distance_traveled, -desired_delta, desired_delta)
 
         # use delta in y direction as distance that was travelled
         distance_traveled_reward = distance_traveled * self.weight_distance_traveled
