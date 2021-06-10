@@ -726,7 +726,6 @@ class WalkingRobotIKEnv(gym.Env):
         # use delta in y direction as distance that was travelled
         distance_traveled_reward = distance_traveled * self.weight_distance_traveled
 
-
         if self.task == Task.BACKWARD:
             distance_traveled_reward *= -1
 

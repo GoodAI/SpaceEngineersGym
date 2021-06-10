@@ -100,7 +100,7 @@ class FakeServer(object):
 def test_gym_env(kwargs):
     server = FakeServer()
     server.start()
-    env = gym.make("SpaceEngineers-WalkingRobot-IK-v0", detach=True, verbose=2, **kwargs)
+    env = gym.make("SpaceEngineers-WalkingRobot-IK-v2", detach=True, verbose=2, **kwargs)
 
     check_env(env, warn=True)
 
