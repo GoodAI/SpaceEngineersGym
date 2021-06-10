@@ -165,9 +165,8 @@ class WalkingRobotIKEnv(gym.Env):
         # z: aligned with the "forward" direction of the robot
         # Note: z is with respect to the center of the mech for now
 
-        direction = "backward" if self.task == Task.BACKWARD else "forward"
         # Get leg length by sending initial request
-        response = self._send_initial_request(direction)
+        response = self._send_initial_request()
         # Initialize variables
         self.last_end_effector_pos = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
         # Approximate leg length
@@ -193,6 +192,9 @@ class WalkingRobotIKEnv(gym.Env):
 
         # NOTE: it seems that z init is different for each leg
         z_inits = np.array([response["endEffectorPositions"][i]["z"] for i in range(self.number_of_legs)])
+        # Offset default z to have a more stable starting pose
+        z_offsets = 2 * np.array([-1, 0, 1, -1, 0, 1])
+        z_inits += z_offsets
         # Limit z axis movement for all legs
         self.action_lower_limits[2 :: self.num_dim_per_leg] = z_inits - delta_allowed
         self.action_upper_limits[2 :: self.num_dim_per_leg] = z_inits + delta_allowed
@@ -389,9 +391,11 @@ class WalkingRobotIKEnv(gym.Env):
         if self.id is None:
             response = self._send_initial_request()
         else:
+            direction = "backward" if self.task == Task.BACKWARD else "forward"
             request = {
                 "id": self.id,
                 "type": "Reset",
+                "blueprintDirection": direction,
             }
             response = self._send_request(request)
 
@@ -545,7 +549,8 @@ class WalkingRobotIKEnv(gym.Env):
         self._last_response = deepcopy(response)
         return response
 
-    def _send_initial_request(self, direction: str = "forward") -> Dict[str, Any]:
+    def _send_initial_request(self) -> Dict[str, Any]:
+        direction = "backward" if self.task == Task.BACKWARD else "forward"
         request = {
             "type": "Initial",
             "blueprintName": "Mech-v0-NS-AM",
@@ -720,6 +725,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         # use delta in y direction as distance that was travelled
         distance_traveled_reward = distance_traveled * self.weight_distance_traveled
+
 
         if self.task == Task.BACKWARD:
             distance_traveled_reward *= -1
