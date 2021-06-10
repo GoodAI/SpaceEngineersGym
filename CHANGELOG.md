@@ -1,3 +1,6 @@
+# Release 0.0.5
+- New convention for end effector z
+
 # Release 0.0.4
 - Added end effector velocity (with `SE-WalkingSymmetric-v0`)
 

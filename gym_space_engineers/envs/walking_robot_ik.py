@@ -165,8 +165,9 @@ class WalkingRobotIKEnv(gym.Env):
         # z: aligned with the "forward" direction of the robot
         # Note: z is with respect to the center of the mech for now
 
+        direction = "backward" if self.task == Task.BACKWARD else "forward"
         # Get leg length by sending initial request
-        response = self._send_initial_request()
+        response = self._send_initial_request(direction)
         # Initialize variables
         self.last_end_effector_pos = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
         # Approximate leg length
@@ -544,13 +545,14 @@ class WalkingRobotIKEnv(gym.Env):
         self._last_response = deepcopy(response)
         return response
 
-    def _send_initial_request(self) -> Dict[str, Any]:
+    def _send_initial_request(self, direction: str = "forward") -> Dict[str, Any]:
         request = {
             "type": "Initial",
             "blueprintName": "Mech-v0-NS-AM",
             "environment": "Obstacles3",
             "initialWaitPeriod": self.initial_wait_period,
             "detach": self.detach,
+            "blueprintDirection": direction,
         }
         response = self._send_request(request)
         self.id = response["id"]
