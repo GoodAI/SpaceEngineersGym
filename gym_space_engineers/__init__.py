@@ -16,8 +16,37 @@ register(
 )
 
 register(
-    id="SpaceEngineers-WalkingRobot-IK-v0",
+    id="SpaceEngineers-WalkingRobot-IK-v2",
     entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
-    max_episode_steps=100,  # around 5s of interaction
-    kwargs={"control_frequency": 20},  # 20Hz
+    max_episode_steps=200,  # around 20s of interaction
+    kwargs={"control_frequency": 10},  # 10Hz
+)
+
+register(
+    id="SE-Symmetric-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    max_episode_steps=200,  # around 20s of interaction
+    kwargs={
+        "control_frequency": 10,  # 10Hz
+        "symmetric_control": True,
+        "add_end_effector_velocity": True,
+    },
+)
+
+register(
+    id="SE-TurnLeft-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    max_episode_steps=200,  # around 20s of interaction
+    kwargs={
+        "control_frequency": 10,  # 10Hz
+        "symmetric_control": True,
+        "add_end_effector_velocity": True,
+        "task": "turn_left",
+    },
+)
+# No Timeout
+register(
+    id="SpaceEngineers-WalkingRobot-IK-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    kwargs={"control_frequency": 10},  # 10Hz
 )

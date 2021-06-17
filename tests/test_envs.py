@@ -1,11 +1,16 @@
 import json
+import os
 from threading import Thread
 
 import gym
+import pytest
 import zmq
 from stable_baselines3.common.env_checker import check_env
 
 import gym_space_engineers  # noqa: F401
+
+# Set test addr
+os.environ["SE_SERVER_ADDR"] = "localhost:5566"
 
 
 class FakeServer(object):
@@ -15,14 +20,16 @@ class FakeServer(object):
         self.thread = Thread(target=self.run, daemon=True)
         self.n_legs = 6
         self.step = 0
+        self.started = False
 
     def start(self):
         self.thread.start()
+        self.started = True
 
     def run(self):
         context = zmq.Context()
         socket = context.socket(zmq.REP)
-        socket.bind("tcp://*:5560")
+        socket.bind("tcp://*:5566")
 
         while not self.stop_thread:
             #  Wait for next request from client
@@ -76,11 +83,24 @@ class FakeServer(object):
             # print(f"Sent {response_message}")
             socket.send(response_message.encode("UTF-8"))
 
+        socket.close()
 
-def test_gym_env():
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"symmetric_control": True},
+        {"task": "turn_left"},
+        {"task": "turn_left", "randomize_task": True},
+        {"symmetric_control": True, "symmetry_type": "per_leg"},
+        {"add_end_effector_velocity": True},
+    ],
+)
+def test_gym_env(kwargs):
     server = FakeServer()
     server.start()
-    env = gym.make("SpaceEngineers-WalkingRobot-IK-v0", detach=True, verbose=2)
+    env = gym.make("SpaceEngineers-WalkingRobot-IK-v2", detach=True, verbose=2, **kwargs)
 
     check_env(env, warn=True)
 
