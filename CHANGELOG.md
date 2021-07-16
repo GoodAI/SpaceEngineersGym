@@ -1,3 +1,6 @@
+# Release 0.0.6
+- Added intra episode task randomization
+
 # Release 0.0.5
 - New convention for end effector z
 

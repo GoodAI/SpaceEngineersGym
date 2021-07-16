@@ -56,6 +56,8 @@ class WalkingRobotIKEnv(gym.Env):
     :param randomize_task: Whether to randomize the task being solved.
         For now, only randomize forward/backward or turn left/right,
         not all four at the same time.
+    :param randomize_task: How often (in env steps) to sample new task.
+        -1 means sample at the env of each episode.
     :param add_end_effector_velocity: Add end effector velocity to observation
     """
 
@@ -82,6 +84,7 @@ class WalkingRobotIKEnv(gym.Env):
         symmetry_type: str = "left_right",
         verbose: int = 1,
         randomize_task: bool = False,
+        randomize_interval: int = -1,
         add_end_effector_velocity: bool = False,
     ):
         context = zmq.Context()
@@ -126,6 +129,8 @@ class WalkingRobotIKEnv(gym.Env):
             raise ValueError(f"`task` must be one of {list(Task)}, not {task}")
 
         self.randomize_task = randomize_task
+        self.randomize_interval = randomize_interval
+        self.n_steps = 1
         # Tasks to randomize
         if self.task in [Task.FORWARD, Task.BACKWARD]:
             self.tasks = [Task.FORWARD, Task.BACKWARD]
@@ -334,6 +339,12 @@ class WalkingRobotIKEnv(gym.Env):
 
         info.update(self._additional_infos())
 
+        self.n_steps += 1
+
+        # Randomize task: shall we do it before stepping into the env?
+        if self.randomize_task and self.randomize_interval > 0 and self.n_steps % self.randomize_interval == 0:
+            self.change_task(random.choice(self.tasks))
+
         return observation, reward, done, info
 
     def apply_symmetry(self, action: np.ndarray) -> np.ndarray:
@@ -383,6 +394,7 @@ class WalkingRobotIKEnv(gym.Env):
         self._first_step = True
         self.current_sleep_time = self.wanted_dt
         self.last_time = time.time()
+        self.n_steps = 1
 
         # Select a task randomly
         if self.randomize_task:

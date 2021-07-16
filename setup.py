@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="gym_space_engineers",
-    version="0.0.5",
+    version="0.0.6",
     install_requires=["gym", "numpy", "pyzmq"],
     extras_require={
         "tests": [
