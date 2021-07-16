@@ -44,6 +44,22 @@ register(
         "task": "turn_left",
     },
 )
+
+
+register(
+    id="SE-MultiTask-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    max_episode_steps=200,  # around 20s of interaction
+    kwargs={
+        "control_frequency": 10,  # 10Hz
+        "symmetric_control": True,
+        "add_end_effector_velocity": True,
+        "task": "forward",
+        "randomize_task": True,
+        "randomize_interval": 50, # change task every 5s
+    },
+)
+
 # No Timeout
 register(
     id="SpaceEngineers-WalkingRobot-IK-v1",
