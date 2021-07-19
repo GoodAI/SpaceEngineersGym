@@ -132,10 +132,11 @@ class WalkingRobotIKEnv(gym.Env):
         self.randomize_interval = randomize_interval
         self.n_steps = 1
         # Tasks to randomize
-        if self.task in [Task.FORWARD, Task.BACKWARD]:
-            self.tasks = [Task.FORWARD, Task.BACKWARD]
-        else:
-            self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT]
+        self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT, Task.FORWARD, Task.BACKWARD]
+        # if self.task in [Task.FORWARD, Task.BACKWARD]:
+        #     self.tasks = [Task.FORWARD, Task.BACKWARD]
+        # else:
+        #     self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT]
 
         # Observation space dim
         num_var_per_joint = 0  # position,velocity,torque?
@@ -691,7 +692,9 @@ class WalkingRobotIKEnv(gym.Env):
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
-        return reward
+        # Scale down to match forward/backward reward magnitude
+        # TODO: rather scale the weight
+        return reward / 10
 
     def _xy_deviation_cost(self) -> float:
         """
