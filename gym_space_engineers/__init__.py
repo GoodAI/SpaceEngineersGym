@@ -56,7 +56,7 @@ register(
         "add_end_effector_velocity": True,
         "task": "forward",
         "randomize_task": True,
-        "randomize_interval": 100, # change task every 10s
+        "randomize_interval": 100,  # change task every 10s
     },
 )
 
