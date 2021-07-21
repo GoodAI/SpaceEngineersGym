@@ -1,6 +1,7 @@
 # Release 0.0.6
 - Added intra episode task randomization
 - Scaled reward for the turning task
+- Faster speed when transitioning for one task to another
 
 # Release 0.0.5
 - New convention for end effector z
