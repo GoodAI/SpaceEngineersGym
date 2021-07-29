@@ -61,6 +61,12 @@ class WalkingRobotIKEnv(gym.Env):
     :param add_end_effector_velocity: Add end effector velocity to observation
     """
 
+    ROBOTS = [
+        "v0:NS-AM",  # (original robot)
+        "v1:NS-AM",  # (same leg anatomy as v0, but only 4 legs)
+        "v2:NS-AM",  # (6 legs, but each leg has two additional joints)
+    ]
+
     def __init__(
         self,
         detach: bool = False,
@@ -86,6 +92,7 @@ class WalkingRobotIKEnv(gym.Env):
         randomize_task: bool = False,
         randomize_interval: int = -1,
         add_end_effector_velocity: bool = False,
+        robot_id: int = 0,
     ):
         context = zmq.Context()
         self.socket = context.socket(zmq.REQ)
@@ -95,6 +102,24 @@ class WalkingRobotIKEnv(gym.Env):
 
         self.detach = detach
         self.id = None  # client id
+        # Name of the robot blueprint
+        self.robot_name = self.ROBOTS[robot_id]
+
+        # Prepare task(s)
+        try:
+            self.task = Task(task)
+        except ValueError:
+            raise ValueError(f"`task` must be one of {list(Task)}, not {task}")
+
+        self.randomize_task = randomize_task
+        self.randomize_interval = randomize_interval
+        self.n_steps = 1
+        # Tasks to randomize
+        self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT, Task.FORWARD, Task.BACKWARD]
+        # if self.task in [Task.FORWARD, Task.BACKWARD]:
+        #     self.tasks = [Task.FORWARD, Task.BACKWARD]
+        # else:
+        #     self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT]
 
         # Target control frequency in Hz
         self.limit_control_freq = limit_control_freq
@@ -113,9 +138,13 @@ class WalkingRobotIKEnv(gym.Env):
 
         # TODO: contact indicator / torque ?
 
-        # For now, this is hardcoded for the 6-legged robot
-        self.number_of_legs = 6
-        self.num_dim_per_leg = 4
+        # Get leg infos by sending initial request
+        response = self._send_initial_request()
+        # Left legs first: ["l1", "l2", "r1", "r2"]
+        self.leg_ids = response["legIdentifiers"]
+
+        self.number_of_legs = len(self.leg_ids)
+        self.num_dim_per_leg = 4  # 3D pos + velocity
 
         self.desired_linear_speed = desired_linear_speed
         self.desired_angular_speed = np.deg2rad(desired_angular_speed)
@@ -123,20 +152,6 @@ class WalkingRobotIKEnv(gym.Env):
         self.desired_angle_delta = self.desired_angular_speed * self.wanted_dt
         self.add_end_effector_velocity = add_end_effector_velocity
 
-        try:
-            self.task = Task(task)
-        except ValueError:
-            raise ValueError(f"`task` must be one of {list(Task)}, not {task}")
-
-        self.randomize_task = randomize_task
-        self.randomize_interval = randomize_interval
-        self.n_steps = 1
-        # Tasks to randomize
-        self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT, Task.FORWARD, Task.BACKWARD]
-        # if self.task in [Task.FORWARD, Task.BACKWARD]:
-        #     self.tasks = [Task.FORWARD, Task.BACKWARD]
-        # else:
-        #     self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT]
 
         # Observation space dim
         num_var_per_joint = 0  # position,velocity,torque?
@@ -171,8 +186,6 @@ class WalkingRobotIKEnv(gym.Env):
         # z: aligned with the "forward" direction of the robot
         # Note: z is with respect to the center of the mech for now
 
-        # Get leg length by sending initial request
-        response = self._send_initial_request()
         # Initialize variables
         self.last_end_effector_pos = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
         # Approximate leg length
@@ -197,9 +210,14 @@ class WalkingRobotIKEnv(gym.Env):
         self.action_upper_limits[self.action_dim // 2 :: self.num_dim_per_leg] = x_init + delta_allowed
 
         # NOTE: it seems that z init is different for each leg
+        # UPDATE: should be fixed now (TO CHECK)
         z_inits = np.array([response["endEffectorPositions"][i]["z"] for i in range(self.number_of_legs)])
         # Offset default z to have a more stable starting pose
-        z_offsets = 2 * np.array([-1, 0, 1, -1, 0, 1])
+        z_offsets = {
+            4: 2 * np.array([-1, 1, -1, 1]),
+            6: 2 * np.array([-1, 0, 1, -1, 0, 1]),
+        }[self.number_of_legs]
+
         z_inits += z_offsets
         # Limit z axis movement for all legs
         self.action_lower_limits[2 :: self.num_dim_per_leg] = z_inits - delta_allowed
@@ -303,9 +321,7 @@ class WalkingRobotIKEnv(gym.Env):
             action = self.apply_symmetry(action)
 
         commands = {}
-        leg_ids = ["l1", "l2", "l3", "r1", "r2", "r3"]
-
-        for i, leg_id in enumerate(leg_ids):
+        for i, leg_id in enumerate(self.leg_ids):
             # Extract action values for each leg
             start_idx = self.num_dim_per_leg * i
             values = action[start_idx : start_idx + self.num_dim_per_leg]
@@ -566,7 +582,7 @@ class WalkingRobotIKEnv(gym.Env):
         direction = "backward" if self.task == Task.BACKWARD else "forward"
         request = {
             "type": "Initial",
-            "blueprintName": "Mech-v0-NS-AM",
+            "blueprintName": self.robot_name,
             "environment": "Obstacles3",
             "initialWaitPeriod": self.initial_wait_period,
             "detach": self.detach,

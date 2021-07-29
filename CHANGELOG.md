@@ -1,3 +1,6 @@
+# Release 0.0.7
+- Added support for multiple robots
+
 # Release 0.0.6
 - Added intra episode task randomization
 - Scaled reward for the turning task

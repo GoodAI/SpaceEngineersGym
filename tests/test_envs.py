@@ -14,11 +14,11 @@ os.environ["SE_SERVER_ADDR"] = "localhost:5566"
 
 
 class FakeServer(object):
-    def __init__(self):
+    def __init__(self, n_legs: int = 6):
         super(FakeServer, self).__init__()
         self.stop_thread = False
         self.thread = Thread(target=self.run, daemon=True)
-        self.n_legs = 6
+        self.n_legs = n_legs
         self.step = 0
         self.started = False
 
@@ -68,6 +68,7 @@ class FakeServer(object):
             #     id=2,
             # )
 
+            legIdentifiers = [f"l{i + 1}" for i in range(self.n_legs // 2)] + [f"r{i + 1}" for i in range(self.n_legs // 2)]
             # Rotated 90deg
             response = dict(
                 position=dict(x=self.step, y=1, z=1),
@@ -76,6 +77,7 @@ class FakeServer(object):
                 up=dict(x=0, y=1, z=0),
                 endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
                 id=3,
+                legIdentifiers=legIdentifiers,
             )
 
             #  Send reply back to client
@@ -98,8 +100,9 @@ class FakeServer(object):
         {"randomize_task": True, "randomize_interval": 10},
     ],
 )
-def test_gym_env(kwargs):
-    server = FakeServer()
+@pytest.mark.parametrize("n_legs", [4, 6])
+def test_gym_env(kwargs, n_legs):
+    server = FakeServer(n_legs)
     server.start()
     env = gym.make("SpaceEngineers-WalkingRobot-IK-v2", detach=True, verbose=2, **kwargs)
 
