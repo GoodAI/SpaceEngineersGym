@@ -152,7 +152,6 @@ class WalkingRobotIKEnv(gym.Env):
         self.desired_angle_delta = self.desired_angular_speed * self.wanted_dt
         self.add_end_effector_velocity = add_end_effector_velocity
 
-
         # Observation space dim
         num_var_per_joint = 0  # position,velocity,torque?
         dim_joints = self.number_of_legs * self.num_dim_per_leg * num_var_per_joint
