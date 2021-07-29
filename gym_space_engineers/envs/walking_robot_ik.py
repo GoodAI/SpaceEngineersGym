@@ -110,10 +110,6 @@ class WalkingRobotIKEnv(gym.Env):
         self.initial_wait_period = initial_wait_period
         self.symmetric_control = symmetric_control
         self.symmetry_type = SymmetryType(symmetry_type)
-        # Augment max velocity when changing task to have faster transition
-        self.task_changed = False
-        self.n_steps_in_task = 0
-        self.n_steps_faster_speed = 2
 
         # TODO: contact indicator / torque ?
 
@@ -309,14 +305,6 @@ class WalkingRobotIKEnv(gym.Env):
         commands = {}
         leg_ids = ["l1", "l2", "l3", "r1", "r2", "r3"]
 
-        max_speed = self.max_speed
-        # Update max speed to ease transition
-        if self.task_changed:
-            self.n_steps_in_task += 1
-            max_speed = 5 * max_speed
-            if self.n_steps_in_task >= self.n_steps_faster_speed:
-                self.task_changed = False
-
         for i, leg_id in enumerate(leg_ids):
             # Extract action values for each leg
             start_idx = self.num_dim_per_leg * i
@@ -328,7 +316,7 @@ class WalkingRobotIKEnv(gym.Env):
                     "z": values[2],
                 },
                 # allow to cap the speed externally to keep current pose
-                "speed": min(values[3], max_speed),
+                "speed": min(values[3], self.max_speed),
             }
 
         request = {
@@ -408,8 +396,6 @@ class WalkingRobotIKEnv(gym.Env):
         self.current_sleep_time = self.wanted_dt
         self.last_time = time.time()
         self.n_steps = 1
-        self.task_changed = False
-        self.n_steps_in_task = 0
 
         # Select a task randomly
         if self.randomize_task:
@@ -441,8 +427,6 @@ class WalkingRobotIKEnv(gym.Env):
         self._update_robot_pose(self._last_response)
         self.old_world_position = Point3D(np.zeros(3))
         self._reset_transform()
-        self.task_changed = True
-        self.n_steps_in_task = 0
         return self._get_observation(self._last_response)
 
     def _update_robot_pose(self, response: Dict[str, Any]) -> None:
