@@ -50,3 +50,8 @@ register(
     entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
     kwargs={"control_frequency": 10},  # 10Hz
 )
+
+register(
+    id="SpaceEngineers-RoboticLeg-v1",
+    entry_point="gym_space_engineers.envs:RoboticLegEnvV1",
+)
