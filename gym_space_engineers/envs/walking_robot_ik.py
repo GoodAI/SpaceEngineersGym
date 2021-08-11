@@ -93,6 +93,8 @@ class WalkingRobotIKEnv(gym.Env):
         randomize_interval: int = -1,
         add_end_effector_velocity: bool = False,
         robot_id: int = 0,
+        show_debug: bool = False,
+        raycast_distance: float = 0.25,
     ):
         context = zmq.Context()
         self.socket = context.socket(zmq.REQ)
@@ -102,6 +104,8 @@ class WalkingRobotIKEnv(gym.Env):
 
         self.detach = detach
         self.id = None  # client id
+        self.show_debug = show_debug
+        self.raycast_distance = raycast_distance
         # Name of the robot blueprint
         self.robot_name = self.ROBOTS[robot_id]
 
@@ -136,8 +140,6 @@ class WalkingRobotIKEnv(gym.Env):
         self.symmetric_control = symmetric_control
         self.symmetry_type = SymmetryType(symmetry_type)
 
-        # TODO: contact indicator / torque ?
-
         # Get leg infos by sending initial request
         response = self._send_initial_request()
         # Left legs first: ["l1", "l2", "r1", "r2"]
@@ -158,7 +160,7 @@ class WalkingRobotIKEnv(gym.Env):
         dim_velocity = 3 + 3  # Linear and angular velocity
         dim_current_rotation = 3
         dim_heading = 1  # deviation to desired heading
-        dim_end_effector = self.number_of_legs * 3
+        dim_end_effector = self.number_of_legs * 4  # (x,y,z, contact indicator)
         dim_command = 2  # forward/backward + left/right
         dim_additional = dim_heading + dim_end_effector + dim_command
 
@@ -476,11 +478,8 @@ class WalkingRobotIKEnv(gym.Env):
         return observation
 
     def _extract_observation(self, response: Dict[str, Any]) -> np.ndarray:
-        # lin_acc = np.array(response["lin_acc"])
-        # joint_torque = np.array(response["joint_torque"])
-        # joint_positions = np.array(response["joint_positions"])
-        # joint_velocities = np.array(response["joint_velocities"])
         end_effector_positions = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
+        contact_indicators = np.array(response["touchSensors"])
         # Use finite difference
         velocity = np.array(self.delta_world_position) / self.wanted_dt
         angular_velocity = (self.current_rot - self.last_rot) / self.wanted_dt
@@ -512,19 +511,17 @@ class WalkingRobotIKEnv(gym.Env):
         observation = np.concatenate(
             (
                 # TODO(toni): check normalization
-                # TODO: check z definition (absolute or relative)
                 end_effector_positions.flatten() / self.max_action,
                 end_effector_velocity,
+                contact_indicators,
                 self.current_rot,
                 velocity,
                 angular_velocity,
-                # TODO(toni): add center deviation?
                 # joint_torque,
                 # joint_positions,
                 # joint_velocities,
                 # lin_acc,
                 np.array([heading_deviation]),
-                # np.array([heading_deviation, self.dt]),
                 np.array(input_command),
             )
         )
@@ -586,6 +583,11 @@ class WalkingRobotIKEnv(gym.Env):
             "initialWaitPeriod": self.initial_wait_period,
             "detach": self.detach,
             "blueprintDirection": direction,
+            "touchSensors": {
+                "isEnabled": True,
+                "showDebug": self.show_debug,
+                "rayCastDistance": self.raycast_distance,
+            },
         }
         response = self._send_request(request)
         self.id = response["id"]

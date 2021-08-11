@@ -76,6 +76,7 @@ class FakeServer(object):
                 forward=dict(x=1, y=0, z=0),
                 up=dict(x=0, y=1, z=0),
                 endEffectorPositions=[dict(x=0, y=0, z=0) for _ in range(self.n_legs)],
+                touchSensors=[False for _ in range(self.n_legs)],
                 id=3,
                 legIdentifiers=legIdentifiers,
             )

@@ -1,3 +1,6 @@
+# Release 0.0.8
+- Added contact indicator
+
 # Release 0.0.7
 - Added support for multiple robots
 
