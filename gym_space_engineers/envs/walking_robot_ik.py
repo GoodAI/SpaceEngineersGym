@@ -160,12 +160,14 @@ class WalkingRobotIKEnv(gym.Env):
         dim_velocity = 3 + 3  # Linear and angular velocity
         dim_current_rotation = 3
         dim_heading = 1  # deviation to desired heading
-        dim_end_effector = self.number_of_legs * 4  # (x,y,z, contact indicator)
+        dim_end_effector = self.number_of_legs * 3  # (x,y,z)
         dim_command = 2  # forward/backward + left/right
         dim_additional = dim_heading + dim_end_effector + dim_command
 
         if add_end_effector_velocity:
             dim_additional += dim_end_effector
+        # Contact indicator
+        dim_additional += self.number_of_legs
 
         self.input_dimension = dim_joints + dim_velocity + dim_current_rotation + dim_additional
 
