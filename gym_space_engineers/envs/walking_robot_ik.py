@@ -793,15 +793,17 @@ class WalkingRobotIKEnv(gym.Env):
         # if self.task == Task.BACKWARD:
         #     desired_delta *= -1
 
+        delta_forward = self.delta_world_position.y / np.cos(normalize_angle(self.heading))
+
         # For debug, to calibrate target speed
         if self.verbose > 1:
-            current_speed = self.delta_world_position.y / self.wanted_dt
+            current_speed = delta_forward / self.wanted_dt
             print(f"Speed: {current_speed:.2f} m/s")
 
-        linear_speed_cost = (desired_delta - self.delta_world_position.y) ** 2 / desired_delta ** 2
+        linear_speed_cost = (desired_delta - delta_forward) ** 2 / desired_delta ** 2
         linear_speed_cost = self.weight_linear_speed * linear_speed_cost
 
-        distance_traveled = self.delta_world_position.y
+        distance_traveled = delta_forward
         # Clip to be at most desired_delta
         if self.weight_linear_speed > 0.0:
             distance_traveled = np.clip(distance_traveled, -desired_delta, desired_delta)
