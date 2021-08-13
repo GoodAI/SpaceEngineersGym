@@ -65,9 +65,9 @@ register(
         "symmetric_control": True,
         "add_end_effector_velocity": True,
         "task": "forward_left",
-        "weight_distance_traveled": 1.0,
-        "desired_angular_speed": 10.0,
-        "weight_angular_speed": 1.0,
+        "weight_distance_traveled": 5.0,
+        "desired_angular_speed": 5.0,
+        "weight_angular_speed": 0.5,
     },
 )
 

@@ -775,8 +775,8 @@ class WalkingRobotIKEnv(gym.Env):
         if self.verbose > 1:
             # f"Continuity Cost: {continuity_cost:5f}
             print(f"Linear Speed Cost: {linear_speed_cost:.5f}")
-            print(f"Deviation cost: {deviation_cost}")
-            print(f"Heading cost: {heading_cost}")
+            print(f"Deviation cost: {deviation_cost:.2f}")
+            print(f"Heading cost: {heading_cost:.2f}")
 
         reward = distance_traveled_reward + -(deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
         if done:
@@ -828,6 +828,10 @@ class WalkingRobotIKEnv(gym.Env):
 
         angular_speed_cost = (delta_heading_rad - desired_delta) ** 2 / self.desired_angle_delta ** 2
         angular_speed_cost = self.weight_angular_speed * angular_speed_cost
+
+        if self.verbose > 1:
+            print(f"Distance travelled reward: {distance_traveled_reward:.2f}")
+            print(f"Angular speed cost: {angular_speed_cost:.2f}")
 
         reward = distance_traveled_reward - angular_speed_cost
         if done:
