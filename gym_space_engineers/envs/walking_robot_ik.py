@@ -21,6 +21,7 @@ class Task(Enum):
     BACKWARD = "backward"
     TURN_LEFT = "turn_left"
     TURN_RIGHT = "turn_right"
+    FORWARD_LEFT = "forward_left"
 
 
 class SymmetryType(Enum):
@@ -377,7 +378,7 @@ class WalkingRobotIKEnv(gym.Env):
             # Same y and speed
             action[right_start_idx + 1 :: self.num_dim_per_leg] = action[1 : right_start_idx : self.num_dim_per_leg]
             action[right_start_idx + 3 :: self.num_dim_per_leg] = action[3 : right_start_idx : self.num_dim_per_leg]
-            if self.task in [Task.FORWARD, Task.BACKWARD]:
+            if self.task in [Task.FORWARD, Task.BACKWARD, Task.FORWARD_LEFT]:
                 # Same z
                 action[right_start_idx + 2 :: self.num_dim_per_leg] = action[2 : right_start_idx : self.num_dim_per_leg]
             elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
@@ -491,7 +492,7 @@ class WalkingRobotIKEnv(gym.Env):
         if self.task in [Task.FORWARD, Task.BACKWARD]:
             # TODO: clip target heading to max heading deviation when using the model?
             heading_deviation = normalize_angle(self.heading - self.start_heading)
-        elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
+        elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT, Task.FORWARD_LEFT]:
             # Note: this is only needed in the case of precise turning
             heading_deviation = normalize_angle(self.heading - self.target_heading)
 
@@ -503,6 +504,7 @@ class WalkingRobotIKEnv(gym.Env):
             Task.BACKWARD: [-1, 0],
             Task.TURN_LEFT: [0, 1],
             Task.TURN_RIGHT: [0, -1],
+            Task.FORWARD_LEFT: [1, 1],
         }[self.task]
 
         if self.add_end_effector_velocity:
@@ -662,6 +664,8 @@ class WalkingRobotIKEnv(gym.Env):
             reward = self._compute_walking_reward(scaled_action, done)
         elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
             reward = self._compute_turning_reward(scaled_action, done)
+        elif self.task in [Task.FORWARD_LEFT]:
+            reward = self._compute_walking_turn_reward(scaled_action, done)
         return reward
 
     def _compute_turning_reward(self, scaled_action: np.ndarray, done: bool) -> float:
@@ -780,6 +784,57 @@ class WalkingRobotIKEnv(gym.Env):
             reward -= self.early_termination_penalty
         return reward
 
+    def _compute_walking_turn_reward(self, scaled_action: np.ndarray, done: bool) -> float:
+        # =================== FORWARD REWARD ==================
+
+        # Desired delta in distance
+        desired_delta = self.desired_linear_speed * self.wanted_dt
+
+        # if self.task == Task.BACKWARD:
+        #     desired_delta *= -1
+
+        # For debug, to calibrate target speed
+        if self.verbose > 1:
+            current_speed = self.delta_world_position.y / self.wanted_dt
+            print(f"Speed: {current_speed:.2f} m/s")
+
+        linear_speed_cost = (desired_delta - self.delta_world_position.y) ** 2 / desired_delta ** 2
+        linear_speed_cost = self.weight_linear_speed * linear_speed_cost
+
+        distance_traveled = self.delta_world_position.y
+        # Clip to be at most desired_delta
+        if self.weight_linear_speed > 0.0:
+            distance_traveled = np.clip(distance_traveled, -desired_delta, desired_delta)
+
+        # use delta in y direction as distance that was travelled
+        distance_traveled_reward = distance_traveled * self.weight_distance_traveled
+
+        # if self.task == Task.BACKWARD:
+        #     distance_traveled_reward *= -1
+
+        # =================== TURNING REWARD ==================
+
+        delta_heading_rad = normalize_angle(self.heading - self.last_heading)
+        delta_heading = np.rad2deg(delta_heading_rad)
+
+        desired_delta = self.desired_angle_delta
+        # if self.task == Task.FORWARD_RIGHT:
+        #     desired_delta *= -1
+
+        # For debug, to calibrate target speed
+        if self.verbose > 1:
+            current_speed = delta_heading / self.wanted_dt
+            print(f"Angular Speed: {current_speed:.2f} deg/s")
+
+        angular_speed_cost = (delta_heading_rad - desired_delta) ** 2 / self.desired_angle_delta ** 2
+        angular_speed_cost = self.weight_angular_speed * angular_speed_cost
+
+        reward = distance_traveled_reward - angular_speed_cost
+        if done:
+            # give negative reward
+            reward -= self.early_termination_penalty
+        return reward
+
     def _center_deviation_cost(self) -> float:
         """
         Cost for deviating from the center of the track (y = 0)
@@ -831,6 +886,8 @@ class WalkingRobotIKEnv(gym.Env):
         elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
             is_centered = self._rotation_center_deviation() < self.threshold_center_deviation
             is_headed = True
+        elif self.task in [Task.FORWARD_LEFT]:
+            return has_fallen or is_crawling
 
         return has_fallen or not is_centered or not is_headed or is_crawling
 

@@ -94,6 +94,7 @@ class FakeServer(object):
     [
         {},
         {"symmetric_control": True},
+        {"task": "forward_left"},
         {"task": "turn_left"},
         {"task": "turn_left", "randomize_task": True},
         {"symmetric_control": True, "symmetry_type": "per_leg"},

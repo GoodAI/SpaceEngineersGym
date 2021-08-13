@@ -56,6 +56,21 @@ register(
     },
 )
 
+register(
+    id="SE-ForwardLeft-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    max_episode_steps=200,  # around 20s of interaction
+    kwargs={
+        "control_frequency": 10,  # 10Hz
+        "symmetric_control": True,
+        "add_end_effector_velocity": True,
+        "task": "forward_left",
+        "weight_distance_traveled": 1.0,
+        "desired_angular_speed": 10.0,
+        "weight_angular_speed": 1.0,
+    },
+)
+
 
 register(
     id="SE-MultiTask-v1",
