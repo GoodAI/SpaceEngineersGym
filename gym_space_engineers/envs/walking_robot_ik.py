@@ -793,7 +793,12 @@ class WalkingRobotIKEnv(gym.Env):
         # if self.task == Task.BACKWARD:
         #     desired_delta *= -1
 
-        delta_forward = self.delta_world_position.y / np.cos(normalize_angle(self.heading))
+        desired_delta_angle = self.desired_angle_delta
+
+        # TODO: fix desired direction + computation of distance travelled along that axis
+        # TODO: check start heading so everything is aligned with the axis
+        delta_forward = self.delta_world_position.x * np.sin(normalize_angle(self.last_heading + desired_delta_angle - self.start_heading))
+        delta_forward += self.delta_world_position.y * np.cos(normalize_angle(self.last_heading + desired_delta_angle - self.start_heading))
 
         # For debug, to calibrate target speed
         if self.verbose > 1:
@@ -819,16 +824,16 @@ class WalkingRobotIKEnv(gym.Env):
         delta_heading_rad = normalize_angle(self.heading - self.last_heading)
         delta_heading = np.rad2deg(delta_heading_rad)
 
-        desired_delta = self.desired_angle_delta
+        desired_delta_angle = self.desired_angle_delta
         # if self.task == Task.FORWARD_RIGHT:
-        #     desired_delta *= -1
+        #     desired_delta_angle *= -1
 
         # For debug, to calibrate target speed
         if self.verbose > 1:
             current_speed = delta_heading / self.wanted_dt
             print(f"Angular Speed: {current_speed:.2f} deg/s")
 
-        angular_speed_cost = (delta_heading_rad - desired_delta) ** 2 / self.desired_angle_delta ** 2
+        angular_speed_cost = (delta_heading_rad - desired_delta_angle) ** 2 / self.heading_deviation_threshold_radians ** 2
         angular_speed_cost = self.weight_angular_speed * angular_speed_cost
 
         if self.verbose > 1:
