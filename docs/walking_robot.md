@@ -16,6 +16,8 @@ Walk forward (with the quadruped):
 python train.py --algo tqc --env SE-Symmetric-v1 --num-threads 2 --vec-env subproc -params n_envs:8 --eval-freq -1 --log-interval 8 --env-kwargs robot_id:1 symmetric_control:True --save-freq 10000
 ```
 
+For small slopes and symmetric control, it is recommended to specify a bigger `allowed_leg_angle` for the env: `allowed_leg_angle:25` (25deg instead of the 15deg by default)
+
 Turn Left:
 ```
 python train.py --algo tqc --env SE-TurnLeft-v1 --num-threads 2 --vec-env subproc -params n_envs:8 --eval-freq -1 --log-interval 8 --env-kwargs robot_id:1 symmetric_control:True --save-freq 10000
@@ -28,7 +30,7 @@ python train.py --algo tqc --env SE-MultiTask-v1 --num-threads 2 --vec-env subpr
 
 Visualize a trained agent (400 steps):
 ```
-python enjoy.py --algo tqc --env SE-Symmetric-v1 --num-threads 2 -f logs\ --load-last-checkpoint --exp-id 1 -n 400
+python enjoy.py --algo tqc --env SE-Symmetric-v1 --num-threads 2 -f logs\ --load-last-checkpoint --exp-id 0 -n 400
 ```
 
 ## Slope and obstacles

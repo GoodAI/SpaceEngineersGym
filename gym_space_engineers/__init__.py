@@ -41,6 +41,7 @@ register(
         "control_frequency": 10,  # 10Hz
         "symmetric_control": True,
         "add_end_effector_velocity": True,
+        # "allowed_leg_angle": 25, # for small slopes, 15deg by default
     },
 )
 
