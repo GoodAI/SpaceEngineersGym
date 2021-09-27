@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.spatial import distance
 from scipy.spatial.transform import Rotation as R
 
 
@@ -63,4 +62,4 @@ plot_robot(new_robot_pos, new_robot_y, "b")
 plt.xlim(-10, 10)
 plt.ylim(-10, 10)
 
-plt.show()
+# plt.show()
