@@ -5,7 +5,7 @@ import random
 import time
 from copy import deepcopy
 from enum import Enum
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Optional
 
 import gym
 import numpy as np
@@ -778,7 +778,7 @@ class WalkingRobotIKEnv(gym.Env):
             print(f"Deviation cost: {deviation_cost:.2f}")
             print(f"Heading cost: {heading_cost:.2f}")
 
-        reward = distance_traveled_reward + -(deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
+        reward = distance_traveled_reward -(deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
@@ -792,12 +792,13 @@ class WalkingRobotIKEnv(gym.Env):
         # if self.task == Task.BACKWARD:
         #     desired_delta *= -1
 
+        # Start heading: 90deg, with respect to absolute x
+        # We transform it to relative frame (world pos) by substraction the start heading
         ninety_deg_rot = R.from_euler("z", np.deg2rad(90), degrees=False).as_matrix()[:2, :2]
-        desired_delta_heading = self.desired_angle_delta  # np.deg2rad(40)
+        desired_delta_heading = self.desired_angle_delta
         # desired_heading = init_heading + desired_delta_heading
-        # TODO: check that this is w.r.t. x (and y is the forward direction)
         desired_heading = normalize_angle(self.last_heading + desired_delta_heading - self.start_heading)
-        desired_forward_distance = 3.0 * self.wanted_dt  # 3 m/s
+        desired_forward_distance = 4.0 * self.wanted_dt  # 5 m/s
         desired_rot = R.from_euler("z", desired_heading, degrees=False)
         desired_rot_mat = desired_rot.as_matrix()[:2, :2]
 
@@ -807,7 +808,9 @@ class WalkingRobotIKEnv(gym.Env):
 
         delta_world_position = np.array([self.delta_world_position.x, self.delta_world_position.y])
         normalization = min(1.0, np.linalg.norm(desired_delta_pos) / np.linalg.norm(delta_world_position))
+        # normalization = 1.0
         distance_traveled_reward = delta_world_position @ desired_delta_pos * normalization
+        distance_traveled_reward *= self.weight_distance_traveled
 
         # For debug, to calibrate target speed
         # if self.verbose > 1:
@@ -833,6 +836,9 @@ class WalkingRobotIKEnv(gym.Env):
         delta_heading_rad = normalize_angle(self.heading - self.last_heading)
         delta_heading = np.rad2deg(delta_heading_rad)
 
+        heading_cost, _ = self._heading_cost(reference_heading = self.last_heading + desired_delta_heading)
+        heading_cost *= self.weight_heading_deviation
+
         # desired_delta_angle = self.desired_angle_delta
         # if self.task == Task.FORWARD_RIGHT:
         #     desired_delta_angle *= -1
@@ -842,16 +848,37 @@ class WalkingRobotIKEnv(gym.Env):
             current_speed = delta_heading / self.wanted_dt
             print(f"Angular Speed: {current_speed:.2f} deg/s")
 
-        # TODO: add penalization for the heading too
-        # angular_speed_cost = (delta_heading_rad - desired_delta_angle) ** 2 / self.heading_deviation_threshold_radians ** 2
+        # # Clip to be at most desired_delta
+        # if self.weight_angular_speed > 0:
+        #     desired_delta_deg = np.rad2deg(desired_delta_heading)
+        #     delta_heading = np.clip(delta_heading, -desired_delta_deg, desired_delta_deg)
+
+        # angular_speed_cost = (delta_heading_rad - desired_delta_heading) ** 2 / self.heading_deviation_threshold_radians ** 2
         # angular_speed_cost = self.weight_angular_speed * angular_speed_cost
-        angular_speed_cost = 0.0
+        #
+        # if self.verbose > 1:
+        #     print(f"Distance travelled reward: {distance_traveled_reward:.2f}")
+        #     print(f"Angular speed cost: {angular_speed_cost:.2f}")
 
-        if self.verbose > 1:
-            print(f"Distance travelled reward: {distance_traveled_reward:.2f}")
-            print(f"Angular speed cost: {angular_speed_cost:.2f}")
+        # delta_heading_error = desired_delta_heading - delta_heading_rad
+        #
+        # # Turning in the right direction
+        # if desired_delta_heading * delta_heading_rad >= 0:
+        #     # Penalize overshooting
+        #     if delta_heading_error > 0:
+        #         rotation_reward = - np.rad2deg(delta_heading_error) * self.weight_angular_speed
+        #     else:
+        #         # Reward turning in the right direction
+        #         rotation_reward = np.rad2deg(abs(delta_heading_rad)) * self.weight_angular_speed
+        # else:
+        #     # Penalize going in the wrong direction
+        #     rotation_reward = - np.rad2deg(abs(delta_heading_error)) * self.weight_angular_speed
 
-        reward = distance_traveled_reward - angular_speed_cost
+        # rotation_reward = self.weight_angular_speed * delta_heading
+
+        # print(f"{distance_traveled_reward:.4f} {heading_cost:.4f}")
+
+        reward = distance_traveled_reward - heading_cost
 
         if done:
             # give negative reward
@@ -868,14 +895,16 @@ class WalkingRobotIKEnv(gym.Env):
         deviation = deviation / self.threshold_center_deviation
         return deviation ** 2
 
-    def _heading_cost(self) -> Tuple[float, bool]:
+    def _heading_cost(self, reference_heading: Optional[np.ndarray] = None) -> Tuple[float, bool]:
         """
         Computes the deviation from the expected heading.
 
         :return: Normalized (0 to 1) squared deviation from expected heading and bool if it is still headed correctly
         """
         # assume heading and expected_heading is given in radians
-        heading_offset = normalize_angle(self.heading - self.start_heading)
+        if reference_heading is None:
+            reference_heading = self.start_heading
+        heading_offset = normalize_angle(self.heading - reference_heading)
         heading_deviation = np.abs(heading_offset)
         heading_deviation = heading_deviation / self.heading_deviation_threshold_radians
         return heading_deviation ** 2, bool(heading_deviation < 1)
