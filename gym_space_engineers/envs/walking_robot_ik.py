@@ -5,7 +5,7 @@ import random
 import time
 from copy import deepcopy
 from enum import Enum
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import gym
 import numpy as np
@@ -21,7 +21,7 @@ class Task(Enum):
     BACKWARD = "backward"
     TURN_LEFT = "turn_left"
     TURN_RIGHT = "turn_right"
-    FORWARD_LEFT = "forward_left"
+    GENERIC_LOCOMOTION = "generic_locomotion"
 
 
 class SymmetryType(Enum):
@@ -378,7 +378,7 @@ class WalkingRobotIKEnv(gym.Env):
             # Same y and speed
             action[right_start_idx + 1 :: self.num_dim_per_leg] = action[1 : right_start_idx : self.num_dim_per_leg]
             action[right_start_idx + 3 :: self.num_dim_per_leg] = action[3 : right_start_idx : self.num_dim_per_leg]
-            if self.task in [Task.FORWARD, Task.BACKWARD, Task.FORWARD_LEFT]:
+            if self.task in [Task.FORWARD, Task.BACKWARD, Task.GENERIC_LOCOMOTION]:
                 # Same z
                 action[right_start_idx + 2 :: self.num_dim_per_leg] = action[2 : right_start_idx : self.num_dim_per_leg]
             elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
@@ -425,6 +425,8 @@ class WalkingRobotIKEnv(gym.Env):
             response = self._send_initial_request()
         else:
             direction = "backward" if self.task == Task.BACKWARD else "forward"
+            if self.desired_linear_speed < 0.0:
+                direction = "backward"
             request = {
                 "id": self.id,
                 "type": "Reset",
@@ -492,7 +494,7 @@ class WalkingRobotIKEnv(gym.Env):
         if self.task in [Task.FORWARD, Task.BACKWARD]:
             # TODO: clip target heading to max heading deviation when using the model?
             heading_deviation = normalize_angle(self.heading - self.start_heading)
-        elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT, Task.FORWARD_LEFT]:
+        elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT, Task.GENERIC_LOCOMOTION]:
             # Note: this is only needed in the case of precise turning
             heading_deviation = normalize_angle(self.heading - self.target_heading)
 
@@ -504,7 +506,7 @@ class WalkingRobotIKEnv(gym.Env):
             Task.BACKWARD: [-1, 0],
             Task.TURN_LEFT: [0, 1],
             Task.TURN_RIGHT: [0, -1],
-            Task.FORWARD_LEFT: [1, 1],
+            Task.GENERIC_LOCOMOTION: [1, 1],
         }[self.task]
 
         if self.add_end_effector_velocity:
@@ -664,7 +666,7 @@ class WalkingRobotIKEnv(gym.Env):
             reward = self._compute_walking_reward(scaled_action, done)
         elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
             reward = self._compute_turning_reward(scaled_action, done)
-        elif self.task in [Task.FORWARD_LEFT]:
+        elif self.task in [Task.GENERIC_LOCOMOTION]:
             reward = self._compute_walking_turn_reward(scaled_action, done)
         return reward
 
@@ -721,7 +723,8 @@ class WalkingRobotIKEnv(gym.Env):
 
     def _xy_deviation_cost(self) -> float:
         """
-        Cost for deviating from the center of the treadmill (y = 0)
+        Cost for deviating from the center of the treadmill (y = 0).
+
         :return: normalized squared value for deviation from a straight line
         """
         # TODO: tune threshold_center_deviation
@@ -778,105 +781,56 @@ class WalkingRobotIKEnv(gym.Env):
             print(f"Deviation cost: {deviation_cost:.2f}")
             print(f"Heading cost: {heading_cost:.2f}")
 
-        reward = distance_traveled_reward -(deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
+        reward = distance_traveled_reward - (deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
         return reward
 
     def _compute_walking_turn_reward(self, scaled_action: np.ndarray, done: bool) -> float:
-        # =================== FORWARD REWARD ==================
-
-        # Desired delta in distance
-        # desired_delta = self.desired_linear_speed * self.wanted_dt
-        # if self.task == Task.BACKWARD:
-        #     desired_delta *= -1
-
+        # =================== DISTANCE REWARD ==================
+        # 90deg rotation matrix (to compute second axis of the frame)
+        ninety_deg_rot = R.from_euler("z", np.deg2rad(90), degrees=False).as_matrix()[:2, :2]
+        # Desired change in orientation
         # Start heading: 90deg, with respect to absolute x
         # We transform it to relative frame (world pos) by substraction the start heading
-        ninety_deg_rot = R.from_euler("z", np.deg2rad(90), degrees=False).as_matrix()[:2, :2]
-        desired_delta_heading = self.desired_angle_delta
-        # desired_heading = init_heading + desired_delta_heading
+        desired_delta_heading = self.desired_angular_speed * self.wanted_dt
         desired_heading = normalize_angle(self.last_heading + desired_delta_heading - self.start_heading)
-        desired_forward_distance = 4.0 * self.wanted_dt  # 5 m/s
+        # Desired change in position
+        # Clip vector with norm greater than:
+        desired_forward_distance = self.desired_linear_speed * self.wanted_dt
         desired_rot = R.from_euler("z", desired_heading, degrees=False)
+        # 2D matrix, movement in on a plane
         desired_rot_mat = desired_rot.as_matrix()[:2, :2]
-
+        # Desired new frame
         desired_new_x = desired_rot_mat @ np.array([1, 0])
         desired_new_y = ninety_deg_rot @ desired_new_x
+        # Desired delta in the position: travel "desired_forward_distance"
+        # along the desired y axis
         desired_delta_pos = desired_forward_distance * desired_new_y
-
+        # Current change in position in relative frame
         delta_world_position = np.array([self.delta_world_position.x, self.delta_world_position.y])
+        # Normalize the displacement vector
         normalization = min(1.0, np.linalg.norm(desired_delta_pos) / np.linalg.norm(delta_world_position))
-        # normalization = 1.0
+        # Normalized dot product
         distance_traveled_reward = delta_world_position @ desired_delta_pos * normalization
         distance_traveled_reward *= self.weight_distance_traveled
 
-        # For debug, to calibrate target speed
-        # if self.verbose > 1:
-        #     current_speed = delta_forward / self.wanted_dt
-        #     print(f"Speed: {current_speed:.2f} m/s")
-        #
-        # linear_speed_cost = (desired_delta - delta_forward) ** 2 / desired_delta ** 2
-        # linear_speed_cost = self.weight_linear_speed * linear_speed_cost
-
-        # distance_traveled = delta_forward
-        # # Clip to be at most desired_delta
-        # if self.weight_linear_speed > 0.0:
-        #     distance_traveled = np.clip(distance_traveled, -desired_delta, desired_delta)
-
-        # use delta in y direction as distance that was travelled
-        # distance_traveled_reward = distance_traveled * self.weight_distance_traveled
-
-        # if self.task == Task.BACKWARD:
-        #     distance_traveled_reward *= -1
-
         # =================== TURNING REWARD ==================
-
-        delta_heading_rad = normalize_angle(self.heading - self.last_heading)
-        delta_heading = np.rad2deg(delta_heading_rad)
-
-        heading_cost, _ = self._heading_cost(reference_heading = self.last_heading + desired_delta_heading)
+        # Normalized distance to desired orientation/heading
+        heading_cost, _ = self._heading_cost(reference_heading=self.last_heading + desired_delta_heading)
         heading_cost *= self.weight_heading_deviation
-
-        # desired_delta_angle = self.desired_angle_delta
-        # if self.task == Task.FORWARD_RIGHT:
-        #     desired_delta_angle *= -1
 
         # For debug, to calibrate target speed
         if self.verbose > 1:
+            delta_heading_rad = normalize_angle(self.heading - self.last_heading)
+            delta_heading = np.rad2deg(delta_heading_rad)
             current_speed = delta_heading / self.wanted_dt
             print(f"Angular Speed: {current_speed:.2f} deg/s")
 
-        # # Clip to be at most desired_delta
-        # if self.weight_angular_speed > 0:
-        #     desired_delta_deg = np.rad2deg(desired_delta_heading)
-        #     delta_heading = np.clip(delta_heading, -desired_delta_deg, desired_delta_deg)
-
-        # angular_speed_cost = (delta_heading_rad - desired_delta_heading) ** 2 / self.heading_deviation_threshold_radians ** 2
-        # angular_speed_cost = self.weight_angular_speed * angular_speed_cost
-        #
-        # if self.verbose > 1:
-        #     print(f"Distance travelled reward: {distance_traveled_reward:.2f}")
-        #     print(f"Angular speed cost: {angular_speed_cost:.2f}")
-
-        # delta_heading_error = desired_delta_heading - delta_heading_rad
-        #
-        # # Turning in the right direction
-        # if desired_delta_heading * delta_heading_rad >= 0:
-        #     # Penalize overshooting
-        #     if delta_heading_error > 0:
-        #         rotation_reward = - np.rad2deg(delta_heading_error) * self.weight_angular_speed
-        #     else:
-        #         # Reward turning in the right direction
-        #         rotation_reward = np.rad2deg(abs(delta_heading_rad)) * self.weight_angular_speed
-        # else:
-        #     # Penalize going in the wrong direction
-        #     rotation_reward = - np.rad2deg(abs(delta_heading_error)) * self.weight_angular_speed
-
-        # rotation_reward = self.weight_angular_speed * delta_heading
-
-        # print(f"{distance_traveled_reward:.4f} {heading_cost:.4f}")
+        if self.verbose > 1:
+            print(f"Distance travelled reward: {distance_traveled_reward:.4f}")
+            print(f"Heading cost: {heading_cost:.4f}")
 
         reward = distance_traveled_reward - heading_cost
 
@@ -938,7 +892,7 @@ class WalkingRobotIKEnv(gym.Env):
         elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
             is_centered = self._rotation_center_deviation() < self.threshold_center_deviation
             is_headed = True
-        elif self.task in [Task.FORWARD_LEFT]:
+        elif self.task in [Task.GENERIC_LOCOMOTION]:
             return has_fallen or is_crawling
 
         return has_fallen or not is_centered or not is_headed or is_crawling
