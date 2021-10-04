@@ -55,3 +55,8 @@ register(
     id="SpaceEngineers-RoboticLeg-v1",
     entry_point="gym_space_engineers.envs:RoboticLegEnvV1",
 )
+
+register(
+    id="SpaceEngineers-WalkingRobot-OpenLoop-v0",
+    entry_point="gym_space_engineers.envs:WalkingRobotOpenLoopEnv",
+)
