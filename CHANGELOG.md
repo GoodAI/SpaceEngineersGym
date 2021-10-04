@@ -1,3 +1,6 @@
+# Release 0.0.9
+- Added `Generic` task that handle both distance and turning reward (for instance to walk forward while turning)
+
 # Release 0.0.8
 - Added contact indicator
 
