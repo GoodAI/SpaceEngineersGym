@@ -492,7 +492,6 @@ class WalkingRobotIKEnv(gym.Env):
         self.last_end_effector_pos = end_effector_positions.copy()
 
         if self.task in [Task.FORWARD, Task.BACKWARD]:
-            # TODO: clip target heading to max heading deviation when using the model?
             heading_deviation = normalize_angle(self.heading - self.start_heading)
         elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT, Task.GENERIC_LOCOMOTION]:
             # Note: this is only needed in the case of precise turning
@@ -500,13 +499,15 @@ class WalkingRobotIKEnv(gym.Env):
 
         # Append input command, one for forward/backward
         # one for turn left/right
-        # TODO(toni): allow a mix of commands
         input_command = {
             Task.FORWARD: [1, 0],
             Task.BACKWARD: [-1, 0],
             Task.TURN_LEFT: [0, 1],
             Task.TURN_RIGHT: [0, -1],
-            Task.GENERIC_LOCOMOTION: [1, 1],
+            Task.GENERIC_LOCOMOTION: [
+                self.desired_linear_speed * self.wanted_dt,
+                self.desired_angular_speed * self.wanted_dt,
+            ],
         }[self.task]
 
         if self.add_end_effector_velocity:
