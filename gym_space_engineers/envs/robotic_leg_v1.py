@@ -46,8 +46,12 @@ class RoboticLegEnvV1(gym.Env):
         position = response["endEffectorPosition"]
         position_array = np.array([position["x"], position["y"], position["z"]])
 
+        orientation = response["endEffectorOrientation"]
+        orientation_array = np.array([orientation["x"], orientation["y"], orientation["z"]])
+
         info = {
-            "was_successful": response["wasSuccessful"]
+            "was_successful": response["wasSuccessful"],
+            "orientation": orientation_array,
         }
 
         return position_array, 0, True, info
