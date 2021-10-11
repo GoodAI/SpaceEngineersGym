@@ -1,9 +1,9 @@
 import json
+from typing import Any, Dict, Tuple
 
 import gym
 import numpy as np
 import zmq
-from typing import Any, Dict, Tuple
 from gym import spaces
 
 
@@ -14,21 +14,25 @@ class WalkingRobotOpenLoopEnv(gym.Env):
         self.socket.connect("tcp://localhost:5572")
         self.objective = objective
 
-        response = self._send_request({
-            "type": "Initial",
-            "mechName": mech_name,
-        })
+        response = self._send_request(
+            {
+                "type": "Initial",
+                "mechName": mech_name,
+            }
+        )
 
         self.id = response["id"]
 
     def step(self, action: dict):
 
-        response = self._send_request({
-            "id": self.id,
-            "type": "Command",
-            "objective": self.objective,
-            "hyperParams": action,
-        })
+        response = self._send_request(
+            {
+                "id": self.id,
+                "type": "Command",
+                "objective": self.objective,
+                "hyperParams": action,
+            }
+        )
 
         return response, 0, True, None
 
@@ -59,17 +63,26 @@ class WalkingRobotOpenLoopEnv(gym.Env):
 # Test the environment by doing 20 random steps in the game
 if __name__ == "__main__":
     import time
+
     import gym
+
     import gym_space_engineers
 
     while True:
         env = gym.make("SpaceEngineers-WalkingRobot-OpenLoop-v0", mech_name="v2")
         env.reset()
 
-        observation, _, _, _ = env.step({
-            "duration": 50, "x": 5.250909035640978, "yRange": 6.6994406917744693, "yMin": -8.947822208617133,
-            "zMin": -1.2499644968318842, "zRange": 2.005817017551913, "numberOfCycles": 20
-        })
+        observation, _, _, _ = env.step(
+            {
+                "duration": 50,
+                "x": 5.250909035640978,
+                "yRange": 6.6994406917744693,
+                "yMin": -8.947822208617133,
+                "zMin": -1.2499644968318842,
+                "zRange": 2.005817017551913,
+                "numberOfCycles": 20,
+            }
+        )
 
         print(observation)
 

@@ -1,9 +1,9 @@
 import json
+from typing import Any, Dict, Tuple
 
 import gym
 import numpy as np
 import zmq
-from typing import Any, Dict, Tuple
 from gym import spaces
 
 
@@ -13,10 +13,12 @@ class RoboticLegEnvV1(gym.Env):
         self.socket = context.socket(zmq.REQ)
         self.socket.connect("tcp://localhost:5570")
 
-        response = self._send_request({
-            "type": "Initial",
-            "roboticLegName": robotic_leg_name,
-        })
+        response = self._send_request(
+            {
+                "type": "Initial",
+                "roboticLegName": robotic_leg_name,
+            }
+        )
 
         self.id = response["id"]
         self.rotors_count = response["rotorsCount"]
@@ -37,11 +39,13 @@ class RoboticLegEnvV1(gym.Env):
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, Dict[str, Any]]:
         configurations = [(action[i].item()) for i in range(self.rotors_count)]
 
-        response = self._send_request({
-            "id": self.id,
-            "type": "Command",
-            "configurations": configurations
-        })
+        response = self._send_request(
+            {
+                "id": self.id,
+                "type": "Command",
+                "configurations": configurations,
+            }
+        )
 
         position = response["endEffectorPosition"]
         position_array = np.array([position["x"], position["y"], position["z"]])
@@ -83,7 +87,9 @@ class RoboticLegEnvV1(gym.Env):
 # Test the environment by doing 20 random steps in the game
 if __name__ == "__main__":
     import time
+
     import gym
+
     import gym_space_engineers
 
     env = gym.make("SpaceEngineers-RoboticLeg-v1", robotic_leg_name="v5")
