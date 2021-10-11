@@ -86,11 +86,9 @@ class RoboticLegEnvV1(gym.Env):
 
 # Test the environment by doing 20 random steps in the game
 if __name__ == "__main__":
-    import time
-
     import gym
 
-    import gym_space_engineers
+    import gym_space_engineers  # noqa: F401
 
     env = gym.make("SpaceEngineers-RoboticLeg-v1", robotic_leg_name="v5")
     env.reset()

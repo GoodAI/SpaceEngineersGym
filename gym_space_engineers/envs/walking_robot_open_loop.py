@@ -1,10 +1,8 @@
 import json
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 import gym
-import numpy as np
 import zmq
-from gym import spaces
 
 
 class WalkingRobotOpenLoopEnv(gym.Env):
@@ -62,14 +60,9 @@ class WalkingRobotOpenLoopEnv(gym.Env):
 
 # Test the environment by doing 20 random steps in the game
 if __name__ == "__main__":
-    import time
-
-    import gym
-
-    import gym_space_engineers
 
     while True:
-        env = gym.make("SpaceEngineers-WalkingRobot-OpenLoop-v0", mech_name="v2")
+        env = WalkingRobotOpenLoopEnv(mech_name="v2", objective="")
         env.reset()
 
         observation, _, _, _ = env.step(
