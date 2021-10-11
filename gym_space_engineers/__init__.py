@@ -94,3 +94,13 @@ register(
     entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
     kwargs={"control_frequency": 10},  # 10Hz
 )
+
+register(
+    id="SpaceEngineers-RoboticLeg-v1",
+    entry_point="gym_space_engineers.envs:RoboticLegEnvV1",
+)
+
+register(
+    id="SpaceEngineers-WalkingRobot-OpenLoop-v0",
+    entry_point="gym_space_engineers.envs:WalkingRobotOpenLoopEnv",
+)
