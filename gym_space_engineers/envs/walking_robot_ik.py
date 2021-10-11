@@ -121,10 +121,9 @@ class WalkingRobotIKEnv(gym.Env):
         self.n_steps = 1
         # Tasks to randomize
         self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT, Task.FORWARD, Task.BACKWARD]
-        # if self.task in [Task.FORWARD, Task.BACKWARD]:
-        #     self.tasks = [Task.FORWARD, Task.BACKWARD]
-        # else:
-        #     self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT]
+
+        if self.randomize_task and self.task == Task.GENERIC_LOCOMOTION:
+            self.tasks = [Task.FORWARD, Task.GENERIC_LOCOMOTION]
 
         # Target control frequency in Hz
         self.limit_control_freq = limit_control_freq
@@ -420,11 +419,16 @@ class WalkingRobotIKEnv(gym.Env):
         # Select a task randomly
         if self.randomize_task:
             self.task = random.choice(self.tasks)
+            # Randomly go left/right
+            if self.task == Task.GENERIC_LOCOMOTION:
+                self.desired_angular_speed *= np.sign(np.random.rand() - 0.5)
+                self.desired_angle_delta = self.desired_angular_speed * self.wanted_dt
 
         if self.id is None:
             response = self._send_initial_request()
         else:
             direction = "backward" if self.task == Task.BACKWARD else "forward"
+            # TODO(antonin): check the following, does not seems to work...
             if self.desired_linear_speed < 0.0:
                 direction = "backward"
             request = {
@@ -446,6 +450,7 @@ class WalkingRobotIKEnv(gym.Env):
         assert self._last_response is not None
         assert isinstance(task, Task)
         self.task = task
+        # TODO(antonin): allow GENERIC_LOCOMOTION randomization
         self._update_robot_pose(self._last_response)
         self.old_world_position = Point3D(np.zeros(3))
         self._reset_transform()
