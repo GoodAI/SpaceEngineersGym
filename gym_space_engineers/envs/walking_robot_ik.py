@@ -87,7 +87,7 @@ class WalkingRobotIKEnv(gym.Env):
         task: str = "forward",
         initial_wait_period: float = 1.0,
         symmetric_control: bool = False,
-        allowed_leg_angle: float = 15.0,  # in deg
+        allowed_leg_angle: float = 20.0,  # in deg
         symmetry_type: str = "left_right",
         verbose: int = 1,
         randomize_task: bool = False,
@@ -123,7 +123,8 @@ class WalkingRobotIKEnv(gym.Env):
         self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT, Task.FORWARD, Task.BACKWARD]
 
         if self.randomize_task and self.task == Task.GENERIC_LOCOMOTION:
-            self.tasks = [Task.FORWARD, Task.GENERIC_LOCOMOTION]
+            # self.tasks = [Task.FORWARD, Task.GENERIC_LOCOMOTION]
+            self.tasks = [Task.GENERIC_LOCOMOTION]
 
         # Target control frequency in Hz
         self.limit_control_freq = limit_control_freq
@@ -421,8 +422,15 @@ class WalkingRobotIKEnv(gym.Env):
             self.task = random.choice(self.tasks)
             # Randomly go left/right
             if self.task == Task.GENERIC_LOCOMOTION:
+                self.desired_angular_speed = np.deg2rad(10.0)
+                self.desired_linear_speed = 4.0
                 self.desired_angular_speed *= np.sign(np.random.rand() - 0.5)
                 self.desired_angle_delta = self.desired_angular_speed * self.wanted_dt
+                self.weight_distance_traveled = 1.0
+                self.weight_heading_deviation = 20.0
+            else:
+                self.weight_heading_deviation = 1.0
+                self.weight_distance_traveled = 5.0
 
         if self.id is None:
             response = self._send_initial_request()
@@ -511,7 +519,7 @@ class WalkingRobotIKEnv(gym.Env):
             Task.TURN_RIGHT: [0, -1],
             Task.GENERIC_LOCOMOTION: [
                 self.desired_linear_speed * self.wanted_dt,
-                self.desired_angular_speed * self.wanted_dt,
+                self.desired_angular_speed, # * self.wanted_dt,
             ],
         }[self.task]
 

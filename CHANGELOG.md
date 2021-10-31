@@ -1,3 +1,6 @@
+# Release 0.0.10
+- Changed default `allowed_leg_angle` to 20 degrees
+
 # Release 0.0.9
 - Added `Generic` task that handle both distance and turning reward (for instance to walk forward while turning)
 
