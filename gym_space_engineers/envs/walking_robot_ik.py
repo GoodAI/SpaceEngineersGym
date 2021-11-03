@@ -96,11 +96,12 @@ class WalkingRobotIKEnv(gym.Env):
         robot_id: int = 0,
         show_debug: bool = False,
         raycast_distance: float = 0.25,
+        correction_only: bool = False,
     ):
         context = zmq.Context()
         self.socket = context.socket(zmq.REQ)
         # Connect to server
-        SERVER_ADDR = os.environ.get("SE_SERVER_ADDR", "localhost:5560")
+        SERVER_ADDR = os.environ.get("SE_SERVER_ADDR", "localhost:5574")
         self.socket.connect(f"tcp://{SERVER_ADDR}")
 
         self.detach = detach
@@ -230,6 +231,10 @@ class WalkingRobotIKEnv(gym.Env):
         # Update limits for speed input
         self.action_upper_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.max_speed
         self.action_lower_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.min_speed
+
+        if correction_only:
+            self.action_upper_limits = max_action * np.ones(self.number_of_legs * self.num_dim_per_leg)
+            self.action_lower_limits = -max_action * np.ones(self.number_of_legs * self.num_dim_per_leg)
 
         # [X, Y, Z, Speed] for each of the 6 legs
         # (X, Y, Z) is a position relative to the shoulder joint of each leg

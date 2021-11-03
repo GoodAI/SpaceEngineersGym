@@ -104,3 +104,18 @@ register(
     id="SpaceEngineers-WalkingRobot-OpenLoop-v0",
     entry_point="gym_space_engineers.envs:WalkingRobotOpenLoopEnv",
 )
+
+register(
+    id="SE-Corrections-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    max_episode_steps=200,  # around 20s of interaction
+    kwargs={
+        "control_frequency": 10,  # 10Hz
+        "symmetric_control": False,
+        "add_end_effector_velocity": True,
+        "max_action": 1.0,
+        "correction_only": True,
+        "weight_center_deviation": 3,
+        # "allowed_leg_angle": 25, # for small slopes, 15deg by default
+    },
+)
