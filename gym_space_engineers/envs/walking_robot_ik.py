@@ -521,7 +521,7 @@ class WalkingRobotIKEnv(gym.Env):
             Task.TURN_RIGHT: [0, -1],
             Task.GENERIC_LOCOMOTION: [
                 self.desired_linear_speed * self.wanted_dt,
-                self.desired_angular_speed, # * self.wanted_dt,
+                self.desired_angular_speed,  # * self.wanted_dt,
             ],
         }[self.task]
 
