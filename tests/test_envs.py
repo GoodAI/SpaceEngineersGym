@@ -101,6 +101,7 @@ class FakeServer(object):
         {"add_end_effector_velocity": True},
         {"randomize_task": True, "randomize_interval": 10},
         {"randomize_task": True, "task": "generic_locomotion"},
+        {"correction_only": True},
     ],
 )
 @pytest.mark.parametrize("n_legs", [4, 6])

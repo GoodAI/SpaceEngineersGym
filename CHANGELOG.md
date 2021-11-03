@@ -1,3 +1,6 @@
+# Release 0.1.0
+- Added `SE-Corrections-v1` env (supports only robot 0 for now)
+
 # Release 0.0.11
 - Renamed `per_leg` symmetry to `tripod`
 
