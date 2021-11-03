@@ -65,12 +65,20 @@ To switch the IK dataset, go to the InverseKinematics folder, delete the current
 
 ## Gym Env Details
 
+### Overview
+
+QD algorithm is in charge of learning the inverse kinematics (IK) and reinforcement learning (RL) does the coordination of leg movements.
+
+![QD RL](./images/qd_rl_robot.png)
+
 ### Coordinate system
 
 The coordinate system is changed from the one that is received:
 - x axis is aligned with the right direction of the robot
 - y axis is aligned with the forward direction of the robot
 - z axis is pointing upward (opposite direction of gravity)
+
+![World Coordinates](./images/world_coords.png)
 
 At every reset, the initial pose of the robot is used as reference for the following episode.
 The current position of the robot in this new frame is named `self.world_position` in the code:
@@ -79,11 +87,11 @@ The current position of the robot in this new frame is named `self.world_positio
 self.world_position = np.zeros(3)  # x,y,z world position (centered at zero at reset)
 self.robot_position = Point3D(np.zeros(3))  # x,y,z tracking position (without transform)
 ```
-`self._update_world_position()` convert robot position to the new frame and compute delta with previous position.
+`_update_world_position()` convert robot position to the new frame and compute delta with previous position.
 
 ### Observation Space
 
-The observation space details can be found in `_extract_observation`, it mainly contains end-effector positions, velocities, robot rotation, heading deviation, angular velocity and input command (user command).
+The observation space details can be found in `_extract_observation()`, it mainly contains end-effector positions, velocities, robot rotation, heading deviation, angular velocity and input command (user command).
 
 ### Action Space
 
@@ -93,4 +101,17 @@ By default, the speed is limited to 10 (out of 100) but this can be changed by p
 
 The initial pose of the robot is slightly changed to improve stability: front legs are moved a bit forward and hind legs are moved a bit backward (looking more like a spider).
 
-The action space is also restricted based on the initial pose (assumed stable) of the robot.
+The action space is also restricted based on the initial pose (assumed stable) of the robot:
+- x leg axis is restricted to be in `x_init +/- delta_allowed` where `delta_allowed` is controlled by the leg length and the `allowed_leg_angle`
+- z leg axis is restricted to be in `z_init +/- delta_allowed`
+- y is restricted to be between `y_init / 2` (half the leg height) and `y_init`
+
+Leg coordinates and `allowed_leg_angle` are defined as follows (leg length is approximated using distance y position of the initial pose):
+
+![Leg allowed angle](./images/leg_coords.png)
+
+
+### Control Frequency
+
+The env includes a rate limiter that tries to maintain a constant control frequency (by default 10Hz).
+The `_update_control_frequency()` method is in charge of that.
