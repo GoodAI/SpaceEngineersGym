@@ -58,6 +58,39 @@ but it might make sense to use e.g. 2g because with 1g the robot just slides on 
 (don't use more than g:5)
 
 
-## Inverse kinematics
+## Inverse kinematics (amp robot only)
 
 To switch the IK dataset, go to the InverseKinematics folder, delete the current amp.txt file and replace it with either `amp_original.txt` or `amp_pointing_down.txt` (rename them to amp.txt because that's the name the game will be looking for)
+
+
+## Gym Env Details
+
+### Coordinate system
+
+The coordinate system is changed from the one that is received:
+- x axis is aligned with the right direction of the robot
+- y axis is aligned with the forward direction of the robot
+- z axis is pointing upward (opposite direction of gravity)
+
+At every reset, the initial pose of the robot is used as reference for the following episode.
+The current position of the robot in this new frame is named `self.world_position` in the code:
+
+```python
+self.world_position = np.zeros(3)  # x,y,z world position (centered at zero at reset)
+self.robot_position = Point3D(np.zeros(3))  # x,y,z tracking position (without transform)
+```
+`self._update_world_position()` convert robot position to the new frame and compute delta with previous position.
+
+### Observation Space
+
+The observation space details can be found in `_extract_observation`, it mainly contains end-effector positions, velocities, robot rotation, heading deviation, angular velocity and input command (user command).
+
+### Action Space
+
+The action space consists of absolute end-effector desired positions and speed to reach the desired
+position (4d per leg).
+By default, the speed is limited to 10 (out of 100) but this can be changed by passing a higher value to `max_speed`.
+
+The initial pose of the robot is slightly changed to improve stability: front legs are moved a bit forward and hind legs are moved a bit backward (looking more like a spider).
+
+The action space is also restricted based on the initial pose (assumed stable) of the robot.
