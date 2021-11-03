@@ -63,9 +63,10 @@ class WalkingRobotIKEnv(gym.Env):
     """
 
     ROBOTS = [
-        "v0:NS-AM",  # (original robot)
+        "v0:NS-AM",  # (original robot, 6 legs)
         "v1:NS-AM",  # (same leg anatomy as v0, but only 4 legs)
         "v2:NS-AM",  # (6 legs, but each leg has two additional joints)
+        "amp",  # (6 legs, more stylised, smaller legs)
     ]
 
     def __init__(
