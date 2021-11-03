@@ -1,3 +1,24 @@
+# Release 0.0.11
+- Renamed `per_leg` symmetry to `tripod`
+
+# Release 0.0.10
+- Changed default `allowed_leg_angle` to 20 degrees
+- Changed default to not using symmetric control
+- Added `amp` robot
+
+# Release 0.0.9
+- Added `Generic` task that handle both distance and turning reward (for instance to walk forward while turning)
+
+# Release 0.0.8
+- Added contact indicator
+
+# Release 0.0.7
+- Added support for multiple robots
+
+# Release 0.0.6
+- Added intra episode task randomization
+- Scaled reward for the turning task
+
 # Release 0.0.5
 - New convention for end effector z
 

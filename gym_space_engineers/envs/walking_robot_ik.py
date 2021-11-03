@@ -5,7 +5,7 @@ import random
 import time
 from copy import deepcopy
 from enum import Enum
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import gym
 import numpy as np
@@ -21,11 +21,12 @@ class Task(Enum):
     BACKWARD = "backward"
     TURN_LEFT = "turn_left"
     TURN_RIGHT = "turn_right"
+    GENERIC_LOCOMOTION = "generic_locomotion"
 
 
 class SymmetryType(Enum):
     LEFT_RIGHT = "left_right"
-    PER_LEG = "per_leg"
+    TRIPOD = "tripod"
 
 
 class WalkingRobotIKEnv(gym.Env):
@@ -50,14 +51,27 @@ class WalkingRobotIKEnv(gym.Env):
         this limits the action space
     :param symmetry_type: Type of symmetry to use.
         - "left_right": mirror right legs movements according to left leg movements
-        - "per_leg": "triangle" symmetry, only control two legs
+        - "tripod": "triangle" symmetry, only control two legs
             and then mirror or copy for the rest
     :param verbose: control verbosity of the output (useful for debug)
     :param randomize_task: Whether to randomize the task being solved.
         For now, only randomize forward/backward or turn left/right,
         not all four at the same time.
+    :param randomize_task: How often (in env steps) to sample new task.
+        -1 means sample at the env of each episode.
     :param add_end_effector_velocity: Add end effector velocity to observation
+    :param robot_id: Index of the robot to use, see ROBOTS below (default: 0)
+    :param show_debug: Show contact detector debug info in the game
+    :param raycast_distance: Min distance to consider there is a contact
+        for the contact sensor.
     """
+
+    ROBOTS = [
+        "v0:NS-AM",  # (original robot, 6 legs)
+        "v1:NS-AM",  # (same leg anatomy as v0, but only 4 legs)
+        "v2:NS-AM",  # (6 legs, but each leg has two additional joints)
+        "amp",  # (6 legs, more stylised, smaller legs)
+    ]
 
     def __init__(
         self,
@@ -78,11 +92,15 @@ class WalkingRobotIKEnv(gym.Env):
         task: str = "forward",
         initial_wait_period: float = 1.0,
         symmetric_control: bool = False,
-        allowed_leg_angle: float = 15.0,  # in deg
+        allowed_leg_angle: float = 20.0,  # in deg
         symmetry_type: str = "left_right",
         verbose: int = 1,
         randomize_task: bool = False,
+        randomize_interval: int = -1,
         add_end_effector_velocity: bool = False,
+        robot_id: int = 0,
+        show_debug: bool = False,
+        raycast_distance: float = 0.25,
     ):
         context = zmq.Context()
         self.socket = context.socket(zmq.REQ)
@@ -92,6 +110,26 @@ class WalkingRobotIKEnv(gym.Env):
 
         self.detach = detach
         self.id = None  # client id
+        self.show_debug = show_debug
+        self.raycast_distance = raycast_distance
+        # Name of the robot blueprint
+        self.robot_name = self.ROBOTS[robot_id]
+
+        # Prepare task(s)
+        try:
+            self.task = Task(task)
+        except ValueError:
+            raise ValueError(f"`task` must be one of {list(Task)}, not {task}")
+
+        self.randomize_task = randomize_task
+        self.randomize_interval = randomize_interval
+        self.n_steps = 1
+        # Tasks to randomize
+        self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT, Task.FORWARD, Task.BACKWARD]
+
+        if self.randomize_task and self.task == Task.GENERIC_LOCOMOTION:
+            # self.tasks = [Task.FORWARD, Task.GENERIC_LOCOMOTION]
+            self.tasks = [Task.GENERIC_LOCOMOTION]
 
         # Target control frequency in Hz
         self.limit_control_freq = limit_control_freq
@@ -108,11 +146,13 @@ class WalkingRobotIKEnv(gym.Env):
         self.symmetric_control = symmetric_control
         self.symmetry_type = SymmetryType(symmetry_type)
 
-        # TODO: contact indicator / torque ?
+        # Get leg infos by sending initial request
+        response = self._send_initial_request()
+        # Left legs first: ["l1", "l2", "r1", "r2"]
+        self.leg_ids = response["legIdentifiers"]
 
-        # For now, this is hardcoded for the 6-legged robot
-        self.number_of_legs = 6
-        self.num_dim_per_leg = 4
+        self.number_of_legs = len(self.leg_ids)
+        self.num_dim_per_leg = 4  # 3D pos + velocity
 
         self.desired_linear_speed = desired_linear_speed
         self.desired_angular_speed = np.deg2rad(desired_angular_speed)
@@ -120,30 +160,20 @@ class WalkingRobotIKEnv(gym.Env):
         self.desired_angle_delta = self.desired_angular_speed * self.wanted_dt
         self.add_end_effector_velocity = add_end_effector_velocity
 
-        try:
-            self.task = Task(task)
-        except ValueError:
-            raise ValueError(f"`task` must be one of {list(Task)}, not {task}")
-
-        self.randomize_task = randomize_task
-        # Tasks to randomize
-        if self.task in [Task.FORWARD, Task.BACKWARD]:
-            self.tasks = [Task.FORWARD, Task.BACKWARD]
-        else:
-            self.tasks = [Task.TURN_LEFT, Task.TURN_RIGHT]
-
         # Observation space dim
         num_var_per_joint = 0  # position,velocity,torque?
         dim_joints = self.number_of_legs * self.num_dim_per_leg * num_var_per_joint
         dim_velocity = 3 + 3  # Linear and angular velocity
         dim_current_rotation = 3
         dim_heading = 1  # deviation to desired heading
-        dim_end_effector = self.number_of_legs * 3
+        dim_end_effector = self.number_of_legs * 3  # (x,y,z)
         dim_command = 2  # forward/backward + left/right
         dim_additional = dim_heading + dim_end_effector + dim_command
 
         if add_end_effector_velocity:
             dim_additional += dim_end_effector
+        # Contact indicator
+        dim_additional += self.number_of_legs
 
         self.input_dimension = dim_joints + dim_velocity + dim_current_rotation + dim_additional
 
@@ -165,8 +195,6 @@ class WalkingRobotIKEnv(gym.Env):
         # z: aligned with the "forward" direction of the robot
         # Note: z is with respect to the center of the mech for now
 
-        # Get leg length by sending initial request
-        response = self._send_initial_request()
         # Initialize variables
         self.last_end_effector_pos = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
         # Approximate leg length
@@ -191,9 +219,14 @@ class WalkingRobotIKEnv(gym.Env):
         self.action_upper_limits[self.action_dim // 2 :: self.num_dim_per_leg] = x_init + delta_allowed
 
         # NOTE: it seems that z init is different for each leg
+        # UPDATE: should be fixed now (TO CHECK)
         z_inits = np.array([response["endEffectorPositions"][i]["z"] for i in range(self.number_of_legs)])
         # Offset default z to have a more stable starting pose
-        z_offsets = 2 * np.array([-1, 0, 1, -1, 0, 1])
+        z_offsets = {
+            4: 2 * np.array([-1, 1, -1, 1]),
+            6: 2 * np.array([-1, 0, 1, -1, 0, 1]),
+        }[self.number_of_legs]
+
         z_inits += z_offsets
         # Limit z axis movement for all legs
         self.action_lower_limits[2 :: self.num_dim_per_leg] = z_inits - delta_allowed
@@ -280,7 +313,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         if self.symmetric_control:
             # Extend to match the required action dim
-            if self.symmetry_type == SymmetryType.PER_LEG:
+            if self.symmetry_type == SymmetryType.TRIPOD:
                 n_repeat = (self.number_of_legs * self.num_dim_per_leg) // len(action)
                 action = np.tile(action, n_repeat)
                 # FIXME: remove that when z is the same for all legs
@@ -297,9 +330,7 @@ class WalkingRobotIKEnv(gym.Env):
             action = self.apply_symmetry(action)
 
         commands = {}
-        leg_ids = ["l1", "l2", "l3", "r1", "r2", "r3"]
-
-        for i, leg_id in enumerate(leg_ids):
+        for i, leg_id in enumerate(self.leg_ids):
             # Extract action values for each leg
             start_idx = self.num_dim_per_leg * i
             values = action[start_idx : start_idx + self.num_dim_per_leg]
@@ -334,6 +365,12 @@ class WalkingRobotIKEnv(gym.Env):
 
         info.update(self._additional_infos())
 
+        self.n_steps += 1
+
+        # Randomize task: shall we do it before stepping into the env?
+        if self.randomize_task and self.randomize_interval > 0 and self.n_steps % self.randomize_interval == 0:
+            self.change_task(random.choice(self.tasks))
+
         return observation, reward, done, info
 
     def apply_symmetry(self, action: np.ndarray) -> np.ndarray:
@@ -346,7 +383,7 @@ class WalkingRobotIKEnv(gym.Env):
             # Same y and speed
             action[right_start_idx + 1 :: self.num_dim_per_leg] = action[1 : right_start_idx : self.num_dim_per_leg]
             action[right_start_idx + 3 :: self.num_dim_per_leg] = action[3 : right_start_idx : self.num_dim_per_leg]
-            if self.task in [Task.FORWARD, Task.BACKWARD]:
+            if self.task in [Task.FORWARD, Task.BACKWARD, Task.GENERIC_LOCOMOTION]:
                 # Same z
                 action[right_start_idx + 2 :: self.num_dim_per_leg] = action[2 : right_start_idx : self.num_dim_per_leg]
             elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
@@ -372,9 +409,10 @@ class WalkingRobotIKEnv(gym.Env):
             for i in range(self.num_dim_per_leg):
                 action[start_idx_2 + i] = second_leg[i]
 
+            # Alternative tripod symmetry:
             # Opposite x for opposite side
-            indices = start_idx_2[start_idx_2 < right_start_idx]
-            action[indices] = -action[indices]
+            # indices = start_idx_2[start_idx_2 < right_start_idx]
+            # action[indices] = -action[indices]
 
         return action
 
@@ -383,15 +421,30 @@ class WalkingRobotIKEnv(gym.Env):
         self._first_step = True
         self.current_sleep_time = self.wanted_dt
         self.last_time = time.time()
+        self.n_steps = 1
 
         # Select a task randomly
         if self.randomize_task:
             self.task = random.choice(self.tasks)
+            # Randomly go left/right
+            if self.task == Task.GENERIC_LOCOMOTION:
+                self.desired_angular_speed = np.deg2rad(10.0)
+                self.desired_linear_speed = 4.0
+                self.desired_angular_speed *= np.sign(np.random.rand() - 0.5)
+                self.desired_angle_delta = self.desired_angular_speed * self.wanted_dt
+                self.weight_distance_traveled = 1.0
+                self.weight_heading_deviation = 20.0
+            else:
+                self.weight_heading_deviation = 1.0
+                self.weight_distance_traveled = 5.0
 
         if self.id is None:
             response = self._send_initial_request()
         else:
             direction = "backward" if self.task == Task.BACKWARD else "forward"
+            # TODO(antonin): check the following, does not seems to work...
+            if self.desired_linear_speed < 0.0:
+                direction = "backward"
             request = {
                 "id": self.id,
                 "type": "Reset",
@@ -411,6 +464,7 @@ class WalkingRobotIKEnv(gym.Env):
         assert self._last_response is not None
         assert isinstance(task, Task)
         self.task = task
+        # TODO(antonin): allow GENERIC_LOCOMOTION randomization
         self._update_robot_pose(self._last_response)
         self.old_world_position = Point3D(np.zeros(3))
         self._reset_transform()
@@ -448,11 +502,8 @@ class WalkingRobotIKEnv(gym.Env):
         return observation
 
     def _extract_observation(self, response: Dict[str, Any]) -> np.ndarray:
-        # lin_acc = np.array(response["lin_acc"])
-        # joint_torque = np.array(response["joint_torque"])
-        # joint_positions = np.array(response["joint_positions"])
-        # joint_velocities = np.array(response["joint_velocities"])
         end_effector_positions = np.stack([self.to_array(pos) for pos in response["endEffectorPositions"]])
+        contact_indicators = np.array(response["touchSensors"])
         # Use finite difference
         velocity = np.array(self.delta_world_position) / self.wanted_dt
         angular_velocity = (self.current_rot - self.last_rot) / self.wanted_dt
@@ -460,20 +511,22 @@ class WalkingRobotIKEnv(gym.Env):
         self.last_end_effector_pos = end_effector_positions.copy()
 
         if self.task in [Task.FORWARD, Task.BACKWARD]:
-            # TODO: clip target heading to max heading deviation when using the model?
             heading_deviation = normalize_angle(self.heading - self.start_heading)
-        elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
+        elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT, Task.GENERIC_LOCOMOTION]:
             # Note: this is only needed in the case of precise turning
             heading_deviation = normalize_angle(self.heading - self.target_heading)
 
         # Append input command, one for forward/backward
         # one for turn left/right
-        # TODO(toni): allow a mix of commands
         input_command = {
             Task.FORWARD: [1, 0],
             Task.BACKWARD: [-1, 0],
             Task.TURN_LEFT: [0, 1],
             Task.TURN_RIGHT: [0, -1],
+            Task.GENERIC_LOCOMOTION: [
+                self.desired_linear_speed * self.wanted_dt,
+                self.desired_angular_speed,  # * self.wanted_dt,
+            ],
         }[self.task]
 
         if self.add_end_effector_velocity:
@@ -484,19 +537,17 @@ class WalkingRobotIKEnv(gym.Env):
         observation = np.concatenate(
             (
                 # TODO(toni): check normalization
-                # TODO: check z definition (absolute or relative)
                 end_effector_positions.flatten() / self.max_action,
                 end_effector_velocity,
+                contact_indicators,
                 self.current_rot,
                 velocity,
                 angular_velocity,
-                # TODO(toni): add center deviation?
                 # joint_torque,
                 # joint_positions,
                 # joint_velocities,
                 # lin_acc,
                 np.array([heading_deviation]),
-                # np.array([heading_deviation, self.dt]),
                 np.array(input_command),
             )
         )
@@ -553,11 +604,16 @@ class WalkingRobotIKEnv(gym.Env):
         direction = "backward" if self.task == Task.BACKWARD else "forward"
         request = {
             "type": "Initial",
-            "blueprintName": "Mech-v0-NS-AM",
+            "blueprintName": self.robot_name,
             "environment": "Obstacles3",
             "initialWaitPeriod": self.initial_wait_period,
             "detach": self.detach,
             "blueprintDirection": direction,
+            "touchSensors": {
+                "isEnabled": True,
+                "showDebug": self.show_debug,
+                "rayCastDistance": self.raycast_distance,
+            },
         }
         response = self._send_request(request)
         self.id = response["id"]
@@ -630,6 +686,8 @@ class WalkingRobotIKEnv(gym.Env):
             reward = self._compute_walking_reward(scaled_action, done)
         elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
             reward = self._compute_turning_reward(scaled_action, done)
+        elif self.task in [Task.GENERIC_LOCOMOTION]:
+            reward = self._compute_walking_turn_reward(scaled_action, done)
         return reward
 
     def _compute_turning_reward(self, scaled_action: np.ndarray, done: bool) -> float:
@@ -679,11 +737,14 @@ class WalkingRobotIKEnv(gym.Env):
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
-        return reward
+        # Scale down to match forward/backward reward magnitude
+        # TODO: rather scale the weight
+        return reward / 10
 
     def _xy_deviation_cost(self) -> float:
         """
-        Cost for deviating from the center of the treadmill (y = 0)
+        Cost for deviating from the center of the treadmill (y = 0).
+
         :return: normalized squared value for deviation from a straight line
         """
         # TODO: tune threshold_center_deviation
@@ -737,10 +798,62 @@ class WalkingRobotIKEnv(gym.Env):
         if self.verbose > 1:
             # f"Continuity Cost: {continuity_cost:5f}
             print(f"Linear Speed Cost: {linear_speed_cost:.5f}")
-            print(f"Deviation cost: {deviation_cost}")
-            print(f"Heading cost: {heading_cost}")
+            print(f"Deviation cost: {deviation_cost:.2f}")
+            print(f"Heading cost: {heading_cost:.2f}")
 
-        reward = distance_traveled_reward + -(deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
+        reward = distance_traveled_reward - (deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
+        if done:
+            # give negative reward
+            reward -= self.early_termination_penalty
+        return reward
+
+    def _compute_walking_turn_reward(self, scaled_action: np.ndarray, done: bool) -> float:
+        # =================== DISTANCE REWARD ==================
+        # 90deg rotation matrix (to compute second axis of the frame)
+        ninety_deg_rot = R.from_euler("z", np.deg2rad(90), degrees=False).as_matrix()[:2, :2]
+        # Desired change in orientation
+        # Start heading: 90deg, with respect to absolute x
+        # We transform it to relative frame (world pos) by substraction the start heading
+        desired_delta_heading = self.desired_angular_speed * self.wanted_dt
+        desired_heading = normalize_angle(self.last_heading + desired_delta_heading - self.start_heading)
+        # Desired change in position
+        # Clip vector with norm greater than:
+        desired_forward_distance = self.desired_linear_speed * self.wanted_dt
+        desired_rot = R.from_euler("z", desired_heading, degrees=False)
+        # 2D matrix, movement in on a plane
+        desired_rot_mat = desired_rot.as_matrix()[:2, :2]
+        # Desired new frame
+        desired_new_x = desired_rot_mat @ np.array([1, 0])
+        desired_new_y = ninety_deg_rot @ desired_new_x
+        # Desired delta in the position: travel "desired_forward_distance"
+        # along the desired y axis
+        desired_delta_pos = desired_forward_distance * desired_new_y
+        # Current change in position in relative frame
+        delta_world_position = np.array([self.delta_world_position.x, self.delta_world_position.y])
+        # Normalize the displacement vector
+        normalization = min(1.0, np.linalg.norm(desired_delta_pos) / np.linalg.norm(delta_world_position))
+        # Normalized dot product
+        distance_traveled_reward = delta_world_position @ desired_delta_pos * normalization
+        distance_traveled_reward *= self.weight_distance_traveled
+
+        # =================== TURNING REWARD ==================
+        # Normalized distance to desired orientation/heading
+        heading_cost, _ = self._heading_cost(reference_heading=self.last_heading + desired_delta_heading)
+        heading_cost *= self.weight_heading_deviation
+
+        # For debug, to calibrate target speed
+        if self.verbose > 1:
+            delta_heading_rad = normalize_angle(self.heading - self.last_heading)
+            delta_heading = np.rad2deg(delta_heading_rad)
+            current_speed = delta_heading / self.wanted_dt
+            print(f"Angular Speed: {current_speed:.2f} deg/s")
+
+        if self.verbose > 1:
+            print(f"Distance travelled reward: {distance_traveled_reward:.4f}")
+            print(f"Heading cost: {heading_cost:.4f}")
+
+        reward = distance_traveled_reward - heading_cost
+
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
@@ -756,14 +869,16 @@ class WalkingRobotIKEnv(gym.Env):
         deviation = deviation / self.threshold_center_deviation
         return deviation ** 2
 
-    def _heading_cost(self) -> Tuple[float, bool]:
+    def _heading_cost(self, reference_heading: Optional[np.ndarray] = None) -> Tuple[float, bool]:
         """
         Computes the deviation from the expected heading.
 
         :return: Normalized (0 to 1) squared deviation from expected heading and bool if it is still headed correctly
         """
         # assume heading and expected_heading is given in radians
-        heading_offset = normalize_angle(self.heading - self.start_heading)
+        if reference_heading is None:
+            reference_heading = self.start_heading
+        heading_offset = normalize_angle(self.heading - reference_heading)
         heading_deviation = np.abs(heading_offset)
         heading_deviation = heading_deviation / self.heading_deviation_threshold_radians
         return heading_deviation ** 2, bool(heading_deviation < 1)
@@ -797,6 +912,8 @@ class WalkingRobotIKEnv(gym.Env):
         elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
             is_centered = self._rotation_center_deviation() < self.threshold_center_deviation
             is_headed = True
+        elif self.task in [Task.GENERIC_LOCOMOTION]:
+            return has_fallen or is_crawling
 
         return has_fallen or not is_centered or not is_headed or is_crawling
 
