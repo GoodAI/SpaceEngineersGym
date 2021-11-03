@@ -23,6 +23,11 @@ Turn Left:
 python train.py --algo tqc --env SE-TurnLeft-v1 --num-threads 2 --vec-env subproc -params n_envs:8 --eval-freq -1 --log-interval 8 --env-kwargs robot_id:1 symmetric_control:False --save-freq 10000
 ```
 
+Turn Right without symmetry:
+```
+python train.py --algo tqc --env SE-TurnLeft-v1 --num-threads 2 --vec-env subproc -params n_envs:8 --eval-freq -1 --log-interval 8 --env-kwargs robot_id:1 symmetric_control:False task:"'turn_right'" --save-freq 10000
+```
+
 Full controller:
 ```
 python train.py --algo tqc --env SE-MultiTask-v1 --num-threads 2 --vec-env subproc -params n_envs:8 --eval-freq -1 --log-interval 8 --env-kwargs robot_id:1 symmetric_control:False --save-freq 10000
