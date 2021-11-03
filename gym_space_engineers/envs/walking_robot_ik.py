@@ -26,7 +26,7 @@ class Task(Enum):
 
 class SymmetryType(Enum):
     LEFT_RIGHT = "left_right"
-    PER_LEG = "per_leg"
+    TRIPOD = "tripod"
 
 
 class WalkingRobotIKEnv(gym.Env):
@@ -51,7 +51,7 @@ class WalkingRobotIKEnv(gym.Env):
         this limits the action space
     :param symmetry_type: Type of symmetry to use.
         - "left_right": mirror right legs movements according to left leg movements
-        - "per_leg": "triangle" symmetry, only control two legs
+        - "tripod": "triangle" symmetry, only control two legs
             and then mirror or copy for the rest
     :param verbose: control verbosity of the output (useful for debug)
     :param randomize_task: Whether to randomize the task being solved.
@@ -60,12 +60,17 @@ class WalkingRobotIKEnv(gym.Env):
     :param randomize_task: How often (in env steps) to sample new task.
         -1 means sample at the env of each episode.
     :param add_end_effector_velocity: Add end effector velocity to observation
+    :param robot_id: Index of the robot to use, see ROBOTS below (default: 0)
+    :param show_debug: Show contact detector debug info in the game
+    :param raycast_distance: Min distance to consider there is a contact
+        for the contact sensor.
     """
 
     ROBOTS = [
-        "v0:NS-AM",  # (original robot)
+        "v0:NS-AM",  # (original robot, 6 legs)
         "v1:NS-AM",  # (same leg anatomy as v0, but only 4 legs)
         "v2:NS-AM",  # (6 legs, but each leg has two additional joints)
+        "amp",  # (6 legs, more stylised, smaller legs)
     ]
 
     def __init__(
@@ -313,7 +318,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         if self.symmetric_control:
             # Extend to match the required action dim
-            if self.symmetry_type == SymmetryType.PER_LEG:
+            if self.symmetry_type == SymmetryType.TRIPOD:
                 n_repeat = (self.number_of_legs * self.num_dim_per_leg) // len(action)
                 action = np.tile(action, n_repeat)
                 # FIXME: remove that when z is the same for all legs
@@ -409,9 +414,10 @@ class WalkingRobotIKEnv(gym.Env):
             for i in range(self.num_dim_per_leg):
                 action[start_idx_2 + i] = second_leg[i]
 
+            # Alternative tripod symmetry:
             # Opposite x for opposite side
-            indices = start_idx_2[start_idx_2 < right_start_idx]
-            action[indices] = -action[indices]
+            # indices = start_idx_2[start_idx_2 < right_start_idx]
+            # action[indices] = -action[indices]
 
         return action
 
@@ -524,7 +530,7 @@ class WalkingRobotIKEnv(gym.Env):
             Task.TURN_RIGHT: [0, -1],
             Task.GENERIC_LOCOMOTION: [
                 self.desired_linear_speed * self.wanted_dt,
-                self.desired_angular_speed, # * self.wanted_dt,
+                self.desired_angular_speed,  # * self.wanted_dt,
             ],
         }[self.task]
 

@@ -1,5 +1,10 @@
+# Release 0.0.11
+- Renamed `per_leg` symmetry to `tripod`
+
 # Release 0.0.10
 - Changed default `allowed_leg_angle` to 20 degrees
+- Changed default to not using symmetric control
+- Added `amp` robot
 
 # Release 0.0.9
 - Added `Generic` task that handle both distance and turning reward (for instance to walk forward while turning)
