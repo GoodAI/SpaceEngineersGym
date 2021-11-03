@@ -1,3 +1,6 @@
+# Release 0.0.11
+- Renamed `per_leg` symmetry to `tripod`
+
 # Release 0.0.10
 - Changed default `allowed_leg_angle` to 20 degrees
 - Changed default to not using symmetric control

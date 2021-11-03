@@ -26,7 +26,7 @@ class Task(Enum):
 
 class SymmetryType(Enum):
     LEFT_RIGHT = "left_right"
-    PER_LEG = "per_leg"
+    TRIPOD = "tripod"
 
 
 class WalkingRobotIKEnv(gym.Env):
@@ -51,7 +51,7 @@ class WalkingRobotIKEnv(gym.Env):
         this limits the action space
     :param symmetry_type: Type of symmetry to use.
         - "left_right": mirror right legs movements according to left leg movements
-        - "per_leg": "triangle" symmetry, only control two legs
+        - "tripod": "triangle" symmetry, only control two legs
             and then mirror or copy for the rest
     :param verbose: control verbosity of the output (useful for debug)
     :param randomize_task: Whether to randomize the task being solved.
@@ -309,7 +309,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         if self.symmetric_control:
             # Extend to match the required action dim
-            if self.symmetry_type == SymmetryType.PER_LEG:
+            if self.symmetry_type == SymmetryType.TRIPOD:
                 n_repeat = (self.number_of_legs * self.num_dim_per_leg) // len(action)
                 action = np.tile(action, n_repeat)
                 # FIXME: remove that when z is the same for all legs
@@ -405,9 +405,10 @@ class WalkingRobotIKEnv(gym.Env):
             for i in range(self.num_dim_per_leg):
                 action[start_idx_2 + i] = second_leg[i]
 
+            # Alternative tripod symmetry:
             # Opposite x for opposite side
-            indices = start_idx_2[start_idx_2 < right_start_idx]
-            action[indices] = -action[indices]
+            # indices = start_idx_2[start_idx_2 < right_start_idx]
+            # action[indices] = -action[indices]
 
         return action
 
