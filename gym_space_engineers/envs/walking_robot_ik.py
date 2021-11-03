@@ -60,6 +60,10 @@ class WalkingRobotIKEnv(gym.Env):
     :param randomize_task: How often (in env steps) to sample new task.
         -1 means sample at the env of each episode.
     :param add_end_effector_velocity: Add end effector velocity to observation
+    :param robot_id: Index of the robot to use, see ROBOTS below (default: 0)
+    :param show_debug: Show contact detector debug info in the game
+    :param raycast_distance: Min distance to consider there is a contact
+        for the contact sensor.
     """
 
     ROBOTS = [

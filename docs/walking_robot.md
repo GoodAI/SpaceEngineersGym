@@ -110,8 +110,32 @@ Leg coordinates and `allowed_leg_angle` are defined as follows (leg length is ap
 
 ![Leg allowed angle](./images/leg_coords.png)
 
+### Reward Functions
+
+Reward functions for each task are separated:
+- `_compute_turning_reward()` for the turning task
+- `_compute_walking_reward()` for the walking forward/backward task
+- `_compute_walking_turn_reward()` for the generic task (walking forward while turning)
+
+### Termination Conditions
+
+There are two main termination conditions:
+- timeout, defined in `__init__.py` when registering the env
+- when the robot fall (see `has_fallen()`) when the rotation of the robot is more than `roll_over_limit` (40 deg by default)
+
+For the walking task, there is an additional one, when the current heading is too far from the target heading.
 
 ### Control Frequency
 
 The env includes a rate limiter that tries to maintain a constant control frequency (by default 10Hz).
 The `_update_control_frequency()` method is in charge of that.
+
+
+### Training Details
+
+The algorithm in the RL zoo uses two main wrappers:
+- one for stacking previous observation (`HistoryWrapper`)
+- one for reseting all envs as soon as one env reset (avoid breaking markov assumption, `VecForceResetWrapper`)
+
+The training is done in a parallel thread using `ParallelTrainCallback`.
+The `gradient_steps`, number of gradient updates that the thread does must be tuned so it does finish before new data is collected.
