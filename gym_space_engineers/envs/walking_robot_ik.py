@@ -442,7 +442,6 @@ class WalkingRobotIKEnv(gym.Env):
             response = self._send_initial_request()
         else:
             direction = "backward" if self.task == Task.BACKWARD else "forward"
-            # TODO(antonin): check the following, does not seems to work...
             if self.desired_linear_speed < 0.0:
                 direction = "backward"
             request = {

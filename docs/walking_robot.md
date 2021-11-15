@@ -33,6 +33,13 @@ Full controller:
 python train.py --algo tqc --env SE-MultiTask-v1 --num-threads 2 --vec-env subproc -params n_envs:8 --eval-freq -1 --log-interval 8 --env-kwargs robot_id:1 symmetric_control:False --save-freq 10000
 ```
 
+Teleoperation (requires a trained multi-task controller)
+```
+# Path to trained model
+set MULTI_CONTROLLER_PATH=logs\multi-task-save\SE-MultiTask-v1_9/rl_model_250000_steps.zip
+python train.py --algo human --env SE-WalkingTest-v1 --num-threads 2 --eval-freq -1
+```
+
 Visualize a trained agent (400 steps):
 ```
 python enjoy.py --algo tqc --env SE-Symmetric-v1 --num-threads 2 -f logs\ --load-last-checkpoint --exp-id 0 -n 400
