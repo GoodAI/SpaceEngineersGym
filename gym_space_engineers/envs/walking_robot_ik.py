@@ -83,6 +83,7 @@ class WalkingRobotIKEnv(gym.Env):
         "v1:NS-AM",  # (same leg anatomy as v0, but only 4 legs)
         "v2:NS-AM",  # (6 legs, but each leg has two additional joints)
         "amp",  # (6 legs, more stylised, smaller legs)
+        "v3",
     ]
 
     def __init__(
@@ -888,6 +889,9 @@ class WalkingRobotIKEnv(gym.Env):
         if self.task == Task.BACKWARD:
             distance_traveled_reward *= -1
 
+        upright_deviation = self._upright_devitation()
+        upright_deviation_cost = upright_deviation * self.weight_upright_deviation
+
         # Do not reward agent if it has terminated due to fall/crawling/...
         # to avoid encouraging aggressive behavior
         if done:
@@ -899,13 +903,16 @@ class WalkingRobotIKEnv(gym.Env):
             print(f"Deviation cost: {deviation_cost:.2f}")
             print(f"Heading cost: {heading_cost:.2f}")
 
-        reward = distance_traveled_reward - (deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
+        reward = distance_traveled_reward - (deviation_cost + heading_cost + continuity_cost + linear_speed_cost + upright_deviation_cost)
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
 
         metrics.update({
             f"{self.task.value}/velocity": distance_traveled * self.control_frequency,
+            f"{self.task.value}/upright_deviation": upright_deviation_cost,
+            f"{self.task.value}/upright_deviation_degrees": upright_deviation * 180,
+            f"{self.task.value}/linear_speed_cost": linear_speed_cost,
         })
 
         return reward
