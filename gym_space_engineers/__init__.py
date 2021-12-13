@@ -28,7 +28,7 @@ register(
     # max_episode_steps=200,  # around 20s of interaction
     kwargs={
         "control_frequency": 10,  # 10Hz
-        "symmetric_control": True,
+        "symmetric_control": False,
         "add_end_effector_velocity": True,
     },
 )
@@ -94,7 +94,7 @@ register(
         "add_end_effector_velocity": True,
         "task": "forward",
         "randomize_task": True,
-        "randomize_interval": 100,  # change task every 10s
+        "randomize_interval": 80,  # change task every 8s
     },
 )
 
