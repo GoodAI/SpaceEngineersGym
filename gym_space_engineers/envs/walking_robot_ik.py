@@ -64,6 +64,18 @@ class WalkingRobotIKEnv(gym.Env):
     :param show_debug: Show contact detector debug info in the game
     :param raycast_distance: Min distance to consider there is a contact
         for the contact sensor.
+    :param correction_only: Whether the gym only corrects an already existing
+        trajectory generator or completely controls the robot.
+    :param include_phase: Whether the current phase of the trajectory generator
+        should be included in the observations. (only when correction_only == True)
+    :param use_terrain_sensors: Whether the robot should use terrain sensors
+        attached to each of its legs.
+    :param disable_early_termination: Whether the early termination logic should
+        be disabled or not. When disabled, the robot will receive a penalty for
+        each step during which it is not correctly oriented.
+    :param weight_upright_deviation: Weight for a reward that penalizes when the
+        robot is not oriented upright.
+    :param friction: Friction of the end-effector LCD panel. (default: 0)
     """
 
     ROBOTS = [
@@ -71,6 +83,7 @@ class WalkingRobotIKEnv(gym.Env):
         "v1:NS-AM",  # (same leg anatomy as v0, but only 4 legs)
         "v2:NS-AM",  # (6 legs, but each leg has two additional joints)
         "amp",  # (6 legs, more stylised, smaller legs)
+        "v3",
     ]
 
     def __init__(
@@ -102,6 +115,11 @@ class WalkingRobotIKEnv(gym.Env):
         show_debug: bool = False,
         raycast_distance: float = 0.25,
         correction_only: bool = False,
+        include_phase: bool = False,
+        use_terrain_sensors: bool = False,
+        disable_early_termination: bool = False,
+        weight_upright_deviation: float = 0.0,
+        friction: float = 0.0,
     ):
         context = zmq.Context()
         self.socket = context.socket(zmq.REQ)
@@ -113,6 +131,13 @@ class WalkingRobotIKEnv(gym.Env):
         self.id = None  # client id
         self.show_debug = show_debug
         self.raycast_distance = raycast_distance
+
+        self.corrections_only = correction_only
+        self.use_terrain_sensors = use_terrain_sensors
+        self.disable_early_termination = disable_early_termination
+        self.weight_upright_deviation = weight_upright_deviation
+        self.friction = friction
+
         # Name of the robot blueprint
         self.robot_name = self.ROBOTS[robot_id]
 
@@ -170,6 +195,16 @@ class WalkingRobotIKEnv(gym.Env):
         dim_end_effector = self.number_of_legs * 3  # (x,y,z)
         dim_command = 2  # forward/backward + left/right
         dim_additional = dim_heading + dim_end_effector + dim_command
+
+        # When phase is included, two additional values are added to the observations:
+        # The cosine and sine of the phase.
+        self.include_phase = include_phase
+        if include_phase:
+            dim_additional += 2
+
+        # When terrain sensors are enabled, 9 raycast results are added for each leg.
+        if use_terrain_sensors:
+            dim_additional += 9 * self.number_of_legs
 
         if add_end_effector_velocity:
             dim_additional += dim_end_effector
@@ -233,13 +268,14 @@ class WalkingRobotIKEnv(gym.Env):
         self.action_lower_limits[2 :: self.num_dim_per_leg] = z_inits - delta_allowed
         self.action_upper_limits[2 :: self.num_dim_per_leg] = z_inits + delta_allowed
 
-        # Update limits for speed input
-        self.action_upper_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.max_speed
-        self.action_lower_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.min_speed
-
+        # Reset the action limits when in the correction_only mode.
         if correction_only:
             self.action_upper_limits = max_action * np.ones(self.number_of_legs * self.num_dim_per_leg)
             self.action_lower_limits = -max_action * np.ones(self.number_of_legs * self.num_dim_per_leg)
+
+        # Update limits for speed input
+        self.action_upper_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.max_speed
+        self.action_lower_limits[self.num_dim_per_leg - 1 :: self.num_dim_per_leg] = self.min_speed
 
         # [X, Y, Z, Speed] for each of the 6 legs
         # (X, Y, Z) is a position relative to the shoulder joint of each leg
@@ -281,6 +317,11 @@ class WalkingRobotIKEnv(gym.Env):
 
         # Early termination condition and costs
         self.early_termination_penalty = 100  # 1000 when using desired speed
+
+        # Use only a fraction of the penalty when early termination is disabled
+        if self.disable_early_termination:
+            self.early_termination_penalty /= 100
+
         # Allow the robot to deviate 45deg from initial orientation before
         # terminating an episode
         self.heading_deviation_threshold_radians = np.deg2rad(45.0)
@@ -339,6 +380,8 @@ class WalkingRobotIKEnv(gym.Env):
             # Extract action values for each leg
             start_idx = self.num_dim_per_leg * i
             values = action[start_idx : start_idx + self.num_dim_per_leg]
+            # TODO(ON): For now, use a fixed speed when in the corrections_only mode
+            speed = values[3] if not self.corrections_only else self.max_speed
             commands[leg_id] = {
                 "position": {
                     "x": values[0],
@@ -346,13 +389,14 @@ class WalkingRobotIKEnv(gym.Env):
                     "z": values[2],
                 },
                 # allow to cap the speed externally to keep current pose
-                "speed": min(values[3], self.max_speed),
+                "speed": min(speed, self.max_speed),
             }
 
         request = {
             "id": self.id,
             "type": "Command",
             "commands": commands,
+            "task": str(self.task.value),
         }
 
         response = self._send_request(request)
@@ -361,14 +405,30 @@ class WalkingRobotIKEnv(gym.Env):
         # (for instance n steps at targets, that should be decoupled from compute reward)
         self._on_step()
         done = self.is_terminal_state()
-        reward = self._compute_reward(scaled_action, done)
+
+        # Prepare an empty metrics dict that can be passed to methods that compute
+        # reward for individual tasks. In these methods, additional metrics can be stored in the dict,
+        # and these metrics can be tracked via tensorboard.
+        metrics = {}
+
+        reward = self._compute_reward(scaled_action, done, metrics)
+
+        metrics.update({
+            f"rewards/{self.task.value}": 200 * reward,
+            "custom/is_upright": int(not done),
+            "custom/leg_smoothness": response["legSmoothness"],
+            "custom/worst_leg_smoothness": response["worstLegSmoothness"],
+        })
 
         info = {
-            # "up": up,
-            # "forward": forward,
+            "metrics": metrics,
         }
 
         info.update(self._additional_infos())
+
+        # Never terminate if disable_early_termination is enabled
+        if self.disable_early_termination:
+            done = False
 
         self.n_steps += 1
 
@@ -377,6 +437,9 @@ class WalkingRobotIKEnv(gym.Env):
             self.change_task(random.choice(self.tasks))
 
         return observation, reward, done, info
+
+    def set_max_speed(self, speed: float):
+        self.max_speed = speed
 
     def apply_symmetry(self, action: np.ndarray) -> np.ndarray:
         right_start_idx = self.action_dim // 2
@@ -467,6 +530,11 @@ class WalkingRobotIKEnv(gym.Env):
         # The reset transform would break without info about the robot
         assert self._last_response is not None
         assert isinstance(task, Task)
+
+        # Do not change anything if the task is still the same
+        if task == self.task:
+            return
+
         self.task = task
         # TODO(antonin): allow GENERIC_LOCOMOTION randomization
         self._update_robot_pose(self._last_response)
@@ -538,6 +606,12 @@ class WalkingRobotIKEnv(gym.Env):
         else:
             end_effector_velocity = np.array([])
 
+        phase_data = []
+        if self.include_phase:
+            phase = response["phase"]
+            phase_data.append(math.sin(phase))
+            phase_data.append(math.cos(phase))
+
         observation = np.concatenate(
             (
                 # TODO(toni): check normalization
@@ -553,6 +627,8 @@ class WalkingRobotIKEnv(gym.Env):
                 # lin_acc,
                 np.array([heading_deviation]),
                 np.array(input_command),
+                np.array(phase_data),
+                np.array(response["terrainSensorFractions"])
             )
         )
         return observation
@@ -618,6 +694,11 @@ class WalkingRobotIKEnv(gym.Env):
                 "showDebug": self.show_debug,
                 "rayCastDistance": self.raycast_distance,
             },
+            "terrainSensors": {
+                "isEnabled": self.use_terrain_sensors,
+                "showDebug": self.show_debug,
+            },
+            "friction": self.friction,
         }
         response = self._send_request(request)
         self.id = response["id"]
@@ -684,10 +765,10 @@ class WalkingRobotIKEnv(gym.Env):
         """
         return self.action_lower_limits + (0.5 * (scaled_action + 1.0) * (self.action_upper_limits - self.action_lower_limits))
 
-    def _compute_reward(self, scaled_action: np.ndarray, done: bool) -> float:
+    def _compute_reward(self, scaled_action: np.ndarray, done: bool, metrics: dict) -> float:
 
         if self.task in [Task.FORWARD, Task.BACKWARD]:
-            reward = self._compute_walking_reward(scaled_action, done)
+            reward = self._compute_walking_reward(scaled_action, done, metrics)
         elif self.task in [Task.TURN_LEFT, Task.TURN_RIGHT]:
             reward = self._compute_turning_reward(scaled_action, done)
         elif self.task in [Task.GENERIC_LOCOMOTION]:
@@ -736,14 +817,21 @@ class WalkingRobotIKEnv(gym.Env):
         if done:
             turning_reward = 0.0
 
-        reward = -(deviation_cost + angular_speed_cost + continuity_cost) + turning_reward
+        upright_deviation_cost = self._upright_devitation() * self.weight_upright_deviation
+
+        reward = -(deviation_cost + angular_speed_cost + continuity_cost + upright_deviation_cost) + turning_reward
 
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
+
+        # TODO(ON): The reward gets to at most 100 when the upright penalty is set to 1000
+        if self.randomize_task and self.weight_upright_deviation > 0:
+            reward *= 4
+
         # Scale down to match forward/backward reward magnitude
         # TODO: rather scale the weight
-        return reward / 10
+        return reward / (10 if not self.corrections_only else 20)
 
     def _xy_deviation_cost(self) -> float:
         """
@@ -760,7 +848,13 @@ class WalkingRobotIKEnv(gym.Env):
     def _rotation_center_deviation(self) -> float:
         return np.sqrt(self.world_position.x ** 2 + self.world_position.y ** 2)
 
-    def _compute_walking_reward(self, scaled_action: np.ndarray, done: bool) -> float:
+    def _upright_devitation(self):
+        roll = normalize_angle(self.current_rot[0]) / np.pi
+        pitch = normalize_angle(self.current_rot[1]) / np.pi
+
+        return abs(roll) + abs(pitch)
+
+    def _compute_walking_reward(self, scaled_action: np.ndarray, done: bool, metrics: dict) -> float:
         deviation_cost = self.weight_center_deviation * self._center_deviation_cost()
 
         # continuity_cost = self.weight_continuity * self._continuity_cost(scaled_action)
@@ -794,6 +888,9 @@ class WalkingRobotIKEnv(gym.Env):
         if self.task == Task.BACKWARD:
             distance_traveled_reward *= -1
 
+        upright_deviation = self._upright_devitation()
+        upright_deviation_cost = upright_deviation * self.weight_upright_deviation
+
         # Do not reward agent if it has terminated due to fall/crawling/...
         # to avoid encouraging aggressive behavior
         if done:
@@ -805,10 +902,18 @@ class WalkingRobotIKEnv(gym.Env):
             print(f"Deviation cost: {deviation_cost:.2f}")
             print(f"Heading cost: {heading_cost:.2f}")
 
-        reward = distance_traveled_reward - (deviation_cost + heading_cost + continuity_cost + linear_speed_cost)
+        reward = distance_traveled_reward - (deviation_cost + heading_cost + continuity_cost + linear_speed_cost + upright_deviation_cost)
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
+
+        metrics.update({
+            f"{self.task.value}/velocity": distance_traveled * self.control_frequency,
+            f"{self.task.value}/upright_deviation": upright_deviation_cost,
+            f"{self.task.value}/upright_deviation_degrees": upright_deviation * 180,
+            f"{self.task.value}/linear_speed_cost": linear_speed_cost,
+        })
+
         return reward
 
     def _compute_walking_turn_reward(self, scaled_action: np.ndarray, done: bool) -> float:
@@ -936,7 +1041,7 @@ if __name__ == "__main__":
         action[:, 0:3] /= 10
 
     for _ in range(1):
-        env = gym.make("SpaceEngineers-WalkingRobot-IK-v0", detach=False)
+        env = gym.make("SE-Corrections-TurnLeft-v1", detach=False, include_phase=True, use_terrain_sensors = True, show_debug = True, correction_only = True, weight_upright_deviation = 1)
 
         observation = env.reset()
         print(observation)
@@ -945,9 +1050,9 @@ if __name__ == "__main__":
         for y in np.linspace(-10, 10, 30):
             env.render()
 
-            left_leg_position = [-5, y, -0.5, 0.1]
+            left_leg_position = [-5, y, -0.5, 1]
             action = np.stack([left_leg_position for i in range(6)])
-            postprocess_action(action)
+            # postprocess_action(action)
 
             observation, _, _, _ = env.step(action.flatten())
             print(observation)
