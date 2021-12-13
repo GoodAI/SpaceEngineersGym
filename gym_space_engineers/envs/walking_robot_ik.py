@@ -413,12 +413,14 @@ class WalkingRobotIKEnv(gym.Env):
 
         reward = self._compute_reward(scaled_action, done, metrics)
 
-        metrics.update({
-            f"rewards/{self.task.value}": 200 * reward,
-            "custom/is_upright": int(not done),
-            "custom/leg_smoothness": response["legSmoothness"],
-            "custom/worst_leg_smoothness": response["worstLegSmoothness"],
-        })
+        metrics.update(
+            {
+                f"rewards/{self.task.value}": 200 * reward,
+                "custom/is_upright": int(not done),
+                "custom/leg_smoothness": response["legSmoothness"],
+                "custom/worst_leg_smoothness": response["worstLegSmoothness"],
+            }
+        )
 
         info = {
             "metrics": metrics,
@@ -526,7 +528,7 @@ class WalkingRobotIKEnv(gym.Env):
 
         return self._get_observation(response)
 
-    def change_task(self, task: Task) -> np.ndarray:
+    def change_task(self, task: Task) -> Optional[np.ndarray]:
         # The reset transform would break without info about the robot
         assert self._last_response is not None
         assert isinstance(task, Task)
@@ -628,7 +630,7 @@ class WalkingRobotIKEnv(gym.Env):
                 np.array([heading_deviation]),
                 np.array(input_command),
                 np.array(phase_data),
-                np.array(response["terrainSensorFractions"])
+                np.array(response["terrainSensorFractions"]),
             )
         )
         return observation
@@ -902,17 +904,21 @@ class WalkingRobotIKEnv(gym.Env):
             print(f"Deviation cost: {deviation_cost:.2f}")
             print(f"Heading cost: {heading_cost:.2f}")
 
-        reward = distance_traveled_reward - (deviation_cost + heading_cost + continuity_cost + linear_speed_cost + upright_deviation_cost)
+        reward = distance_traveled_reward - (
+            deviation_cost + heading_cost + continuity_cost + linear_speed_cost + upright_deviation_cost
+        )
         if done:
             # give negative reward
             reward -= self.early_termination_penalty
 
-        metrics.update({
-            f"{self.task.value}/velocity": distance_traveled * self.control_frequency,
-            f"{self.task.value}/upright_deviation": upright_deviation_cost,
-            f"{self.task.value}/upright_deviation_degrees": upright_deviation * 180,
-            f"{self.task.value}/linear_speed_cost": linear_speed_cost,
-        })
+        metrics.update(
+            {
+                f"{self.task.value}/velocity": distance_traveled * self.control_frequency,
+                f"{self.task.value}/upright_deviation": upright_deviation_cost,
+                f"{self.task.value}/upright_deviation_degrees": upright_deviation * 180,
+                f"{self.task.value}/linear_speed_cost": linear_speed_cost,
+            }
+        )
 
         return reward
 
@@ -1041,7 +1047,15 @@ if __name__ == "__main__":
         action[:, 0:3] /= 10
 
     for _ in range(1):
-        env = gym.make("SE-Corrections-TurnLeft-v1", detach=False, include_phase=True, use_terrain_sensors = True, show_debug = True, correction_only = True, weight_upright_deviation = 1)
+        env = gym.make(
+            "SE-Corrections-TurnLeft-v1",
+            detach=False,
+            include_phase=True,
+            use_terrain_sensors=True,
+            show_debug=True,
+            correction_only=True,
+            weight_upright_deviation=1,
+        )
 
         observation = env.reset()
         print(observation)
