@@ -114,3 +114,54 @@ register(
     id="SpaceEngineers-WalkingRobot-OpenLoop-v0",
     entry_point="gym_space_engineers.envs:WalkingRobotOpenLoopEnv",
 )
+
+corrections_kwargs = {
+    "add_end_effector_velocity": True,
+    "max_action": 3.0,
+    "correction_only": True,
+    "weight_center_deviation": 3,
+    "include_phase": True,
+    "use_terrain_sensors": True,
+    "disable_early_termination": True,
+    "max_speed": 100.0,
+    "friction": 100.0,
+}
+
+register(
+    id="SE-Corrections-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    max_episode_steps=200,
+    kwargs={
+        **corrections_kwargs,
+    },
+)
+
+register(
+    id="SE-Corrections-TurnLeft-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    max_episode_steps=200,
+    kwargs={
+        **corrections_kwargs,
+        "task": "turn_left",
+    },
+)
+
+register(
+    id="SE-Corrections-Multi-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    max_episode_steps=200,
+    kwargs={
+        **corrections_kwargs,
+        "randomize_task": True,
+        "randomize_interval": 80,
+    },
+)
+
+register(
+    id="SE-Corrections-Control-v1",
+    entry_point="gym_space_engineers.envs:WalkingRobotIKEnv",
+    kwargs={
+        **corrections_kwargs,
+        "disable_early_termination": False,
+    },
+)
